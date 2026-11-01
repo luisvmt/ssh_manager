@@ -283,7 +283,7 @@ class Program
         Console.WriteLine("  --backup [directorio]       Crea un backup (.tar.gz) de claves y config; por defecto en '.'");
         Console.WriteLine();
         Console.WriteLine("Modo TUI:");
-        Console.WriteLine("  ↑/↓          Navegar");
+        Console.WriteLine("  ↑/↓          Navegar (la lista se desplaza si hay más servidores)");
         Console.WriteLine("  Enter        Conectar");
         Console.WriteLine("  x            Ejecutar comando en el servidor seleccionado");
         Console.WriteLine("  c            Copiar clave pública al servidor seleccionado");
@@ -296,7 +296,7 @@ class Program
         Console.WriteLine();
         Console.WriteLine("Archivo de parámetros:");
         Console.WriteLine("  'parameters.conf' (en el directorio actual) define los programas");
-        Console.WriteLine("  externos y los colores de resaltado de la lista.");
+        Console.WriteLine("  externos, el máximo de servidores en pantalla y los colores de la lista.");
         Console.WriteLine("  Si no existe, al arrancar se avisa y se ofrece crear una plantilla");
         Console.WriteLine("  (respuesta por defecto: no); sin ese archivo el programa no continúa.");
         Console.WriteLine();
@@ -304,6 +304,7 @@ class Program
         Console.WriteLine("    ssh                   = ssh");
         Console.WriteLine("    ssh-keygen            = ssh-keygen");
         Console.WriteLine("    ssh-copy-id           = ssh-copy-id");
+        Console.WriteLine("    max-servers           = 15       (servidores visibles en pantalla)");
         Console.WriteLine("    highlight-foreground  = Yellow   (texto de la fila resaltada)");
         Console.WriteLine("    highlight-background  = Blue     (fondo de la fila resaltada)");
         Console.WriteLine();
@@ -602,6 +603,8 @@ class Program
     static (MenuAction, int) ShowMenu(List<HostBlock> hosts)
     {
         int sel = 0;
+        // Primer servidor visible de la ventana de scrolling.
+        int offset = 0;
         ConsoleKeyInfo? pending = null;
 
         while (true)
@@ -625,6 +628,18 @@ class Program
             else
             {
                 if (sel >= hosts.Count) sel = hosts.Count - 1;
+                if (sel < 0) sel = 0;
+
+                // Ventana visible: máximo de servidores en pantalla definido en
+                // "parameters.conf" (max-servers). Si la selección sale de la
+                // ventana, se desplaza una fila ocultando la del extremo opuesto.
+                int window = MaxVisibleRows(hosts.Count);
+                if (sel < offset) offset = sel;
+                if (sel >= offset + window) offset = sel - window + 1;
+                if (offset > hosts.Count - window) offset = hosts.Count - window;
+                if (offset < 0) offset = 0;
+                int last = Math.Min(hosts.Count, offset + window);
+
                 int numWidth = hosts.Count.ToString().Length;
 
                 // Tabla: Servidor | IP/Dominio | Usuario | Tags | Puerto | ID.
@@ -634,12 +649,19 @@ class Program
                     rows.Add(HostCells(hosts[i], i + 1, numWidth));
 
                 const int gap = 2;
+                // Los anchos se calculan con todas las filas para que las columnas
+                // no cambien de tamaño al desplazarse.
                 var widths = ColumnWidths(rows, header, width - 3, gap);
 
                 BoxLine(JoinColumns(header, widths, gap), width);
                 BoxSeparator(width);
-                for (int i = 0; i < hosts.Count; i++)
+                for (int i = offset; i < last; i++)
                     BoxRow(JoinColumns(rows[i], widths, gap), width, i == sel);
+                if (hosts.Count > window)
+                {
+                    BoxSeparator(width);
+                    BoxLine($"[{offset + 1}-{last} de {hosts.Count}] ↑/↓ desplazar", width);
+                }
             }
             BoxBottom(width);
 
@@ -699,6 +721,21 @@ class Program
                     break;
             }
         }
+    }
+
+    // Número máximo de filas de servidores visibles a la vez: se toma de
+    // "max-servers" (parameters.conf) y se recorta si la ventana es más baja.
+    static int MaxVisibleRows(int hostCount)
+    {
+        int rows = Math.Min(Math.Max(1, _parameters.MaxServers), hostCount);
+        try
+        {
+            // Alto que ocupan los marcos (cabecera, tabla, separador, indicador y opciones).
+            int available = Console.WindowHeight - 18;
+            if (available > 0 && rows > available) rows = available;
+        }
+        catch { }
+        return Math.Max(1, rows);
     }
 
     // Celdas de una fila: alias numerado, IP, usuario, tags, puerto e identidad.
@@ -1331,6 +1368,9 @@ class Parameters
     public ConsoleColor HighlightForeground = ConsoleColor.Yellow;
     public ConsoleColor HighlightBackground = ConsoleColor.Blue;
 
+    // Número máximo de servidores visibles a la vez en la pantalla principal.
+    public int MaxServers = 15;
+
     public static string DefaultPath =>
         Path.Combine(Directory.GetCurrentDirectory(), FileName);
 
@@ -1357,6 +1397,10 @@ class Parameters
                 case "ssh-copy-id":          p.SshCopyId = value; break;
                 case "highlight-foreground": p.HighlightForeground = ParseColor(value, p.HighlightForeground); break;
                 case "highlight-background": p.HighlightBackground = ParseColor(value, p.HighlightBackground); break;
+                case "max-servers":
+                    // Solo valores positivos; si no es válido se conserva el valor por defecto.
+                    if (int.TryParse(value, out int maxServers) && maxServers > 0) p.MaxServers = maxServers;
+                    break;
             }
         }
         return p;
@@ -1381,6 +1425,10 @@ class Parameters
         sb.Append("ssh = ssh\n");
         sb.Append("ssh-keygen = ssh-keygen\n");
         sb.Append("ssh-copy-id = ssh-copy-id\n");
+        sb.Append('\n');
+        sb.Append("# Número máximo de servidores visibles en la pantalla principal.\n");
+        sb.Append("# Si hay más, la lista se desplaza con ↑/↓.\n");
+        sb.Append("max-servers = 15\n");
         sb.Append('\n');
         sb.Append("# Colores de la fila resaltada (nombres de ConsoleColor).\n");
         sb.Append("highlight-foreground = Yellow\n");
