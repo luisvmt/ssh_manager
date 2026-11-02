@@ -198,6 +198,12 @@ class Program
                 case MenuAction.Backup:
                     CreateBackup(".", pause: true);
                     break;
+                case MenuAction.SendFile:
+                    if (sel != null) SendFileToHost(sel, _selectedIdentity);
+                    break;
+                case MenuAction.ReceiveFile:
+                    if (sel != null) ReceiveFileFromHost(sel, _selectedIdentity);
+                    break;
                 case MenuAction.Quit:
                     return 0;
             }
@@ -304,6 +310,8 @@ class Program
         Console.WriteLine("  /            Filtrar servidores por texto");
         Console.WriteLine("  a / e / d    Añadir / editar / eliminar host");
         Console.WriteLine("  b            Crear backup de claves y configuración");
+        Console.WriteLine("  s            Enviar archivo o carpeta al servidor seleccionado");
+        Console.WriteLine("  r            Recibir archivo o carpeta desde el servidor seleccionado");
         Console.WriteLine("  q            Salir");
         Console.WriteLine();
         Console.WriteLine("Archivo de parámetros:");
@@ -317,6 +325,7 @@ class Program
         Console.WriteLine("    ssh                   = ssh");
         Console.WriteLine("    ssh-keygen            = ssh-keygen");
         Console.WriteLine("    ssh-copy-id           = ssh-copy-id");
+        Console.WriteLine("    scp                   = scp");
         Console.WriteLine("    config                =          (vacío = ~/.ssh/config, sin -F)");
         Console.WriteLine("    identity              =          (vacío = claves por defecto de ssh)");
         Console.WriteLine("    max-servers           = 15       (servidores visibles en pantalla)");
@@ -512,7 +521,7 @@ class Program
 
     // ---------- TUI ----------
 
-    enum MenuAction { Connect, ExecCommand, CopyKey, SelectKey, GenerateKey, Add, Edit, Delete, Filter, Backup, Quit }
+    enum MenuAction { Connect, ExecCommand, CopyKey, SendFile, ReceiveFile, SelectKey, GenerateKey, Add, Edit, Delete, Filter, Backup, Quit }
 
     // ---------- Dibujo de cajas ----------
 
@@ -694,14 +703,14 @@ class Program
                     "↑/↓ Nav",  "Enter",    "1-N Sel",  "x Cmd",
                     "c Copiar", "k Clave",  "g Generar", "b Backup",
                     "a Añadir", "e Editar", "d Borrar", "/ Filtro",
-                    "q Salir"
+                    "s Enviar", "r Recibir", "q Salir"
                 }
                 : new[]
                 {
                     "↑/↓ Navegar",     "Enter Conectar",  "1-N Seleccionar",  "x Ejecutar cmd",
                     "c Copiar clave",  "k Clave privada", "g Generar clave", "b Backup",
                     "a Añadir",        "e Editar",        "d Eliminar",       "/ Filtrar",
-                    "q Salir"
+                    "s Enviar archivo", "r Recibir archivo", "q Salir"
                 }, width, 4);
             BoxBottom(width);
 
@@ -737,6 +746,8 @@ class Program
                         case 'e': if (hosts.Count > 0) return (MenuAction.Edit, sel); break;
                         case 'd': if (hosts.Count > 0) return (MenuAction.Delete, sel); break;
                         case 'b': return (MenuAction.Backup, -1);
+                        case 's': if (hosts.Count > 0) return (MenuAction.SendFile, sel); break;
+                        case 'r': if (hosts.Count > 0) return (MenuAction.ReceiveFile, sel); break;
                         case '/': return (MenuAction.Filter, -1);
                         case 'q': return (MenuAction.Quit, -1);
                     }
@@ -1001,6 +1012,491 @@ class Program
             .Select(n => Path.Combine(sshDir, n))
             .ToList();
     }
+
+    // ---------- ENVÍO / RECEPCIÓN DE ARCHIVOS ----------
+
+    static bool EnsureScp()
+    {
+        if (CommandExists(_parameters.Scp)) return true;
+        Console.Clear();
+        Console.WriteLine($"No se encontró el programa '{_parameters.Scp}' (scp) en el PATH.");
+        Console.WriteLine("Configúralo en parameters.conf (clave 'scp').");
+        Console.WriteLine("\nPresiona una tecla para volver...");
+        Console.ReadKey(true);
+        return false;
+    }
+
+    // Flujo "Enviar archivo": origen local -> carpeta remota -> nombre destino.
+    static void SendFileToHost(HostBlock host, string? identity)
+    {
+        if (!EnsureScp()) return;
+
+        var source = PickPath(host, identity, remote: false, folderMode: false,
+                              title: "Enviar archivo · Origen (PC local)");
+        if (source == null) return;
+
+        var dest = PickPath(host, identity, remote: true, folderMode: true,
+                            title: $"Enviar archivo · Destino en {host.Name}");
+        if (dest == null) return;
+
+        var originalName = Path.GetFileName(source.Value.path.TrimEnd(
+            Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (string.IsNullOrEmpty(originalName)) originalName = source.Value.path;
+
+        Console.Clear();
+        Console.WriteLine("=== Enviar archivo ===");
+        Console.WriteLine($"Origen : {source.Value.path}{(source.Value.isDir ? "  (carpeta)" : "")}");
+        Console.WriteLine($"Destino: {dest.Value.path}");
+        Console.WriteLine();
+        Console.Write($"Nombre de destino en el servidor [{originalName}]: ");
+        var targetName = (Console.ReadLine() ?? "").Trim();
+        if (string.IsNullOrEmpty(targetName)) targetName = originalName;
+
+        var remoteTarget = RemoteCombine(dest.Value.path, targetName);
+
+        if (RemotePathExists(host, identity, remoteTarget))
+        {
+            Console.Write($"\nEl destino ya existe: {remoteTarget}\n¿Sobrescribir? (s/N): ");
+            var answer = Console.ReadKey(true);
+            Console.WriteLine();
+            if (char.ToLower(answer.KeyChar) != 's') return;
+        }
+
+        Console.WriteLine("\nTransfiriendo...\n");
+        int code = RunScp(
+            source.Value.path,
+            host.Name + ":" + ShQuote(remoteTarget),
+            recursive: source.Value.isDir,
+            identity: identity);
+
+        Console.WriteLine();
+        if (code == 0) Console.WriteLine($"✓ Envío completado: {remoteTarget}");
+        else Console.WriteLine($"✗ No se pudo enviar (código {code}).");
+        Console.WriteLine("\nPresiona una tecla para volver...");
+        Console.ReadKey(true);
+    }
+
+    // Flujo "Recibir archivo": origen remoto -> carpeta local -> nombre destino.
+    static void ReceiveFileFromHost(HostBlock host, string? identity)
+    {
+        if (!EnsureScp()) return;
+
+        var source = PickPath(host, identity, remote: true, folderMode: false,
+                              title: $"Recibir archivo · Origen en {host.Name}");
+        if (source == null) return;
+
+        var dest = PickPath(host, identity, remote: false, folderMode: true,
+                            title: "Recibir archivo · Destino (PC local)");
+        if (dest == null) return;
+
+        var originalName = RemoteBaseName(source.Value.path);
+        if (string.IsNullOrEmpty(originalName)) originalName = "descarga";
+
+        Console.Clear();
+        Console.WriteLine("=== Recibir archivo ===");
+        Console.WriteLine($"Origen : {host.Name}:{source.Value.path}{(source.Value.isDir ? "  (carpeta)" : "")}");
+        Console.WriteLine($"Destino: {dest.Value.path}");
+        Console.WriteLine();
+        Console.Write($"Nombre de destino local [{originalName}]: ");
+        var targetName = (Console.ReadLine() ?? "").Trim();
+        if (string.IsNullOrEmpty(targetName)) targetName = originalName;
+
+        var localTarget = Path.Combine(dest.Value.path, targetName);
+
+        if (File.Exists(localTarget) || Directory.Exists(localTarget))
+        {
+            Console.Write($"\nEl destino ya existe: {localTarget}\n¿Sobrescribir? (s/N): ");
+            var answer = Console.ReadKey(true);
+            Console.WriteLine();
+            if (char.ToLower(answer.KeyChar) != 's') return;
+        }
+
+        Console.WriteLine("\nTransfiriendo...\n");
+        int code = RunScp(
+            host.Name + ":" + ShQuote(source.Value.path),
+            localTarget,
+            recursive: source.Value.isDir,
+            identity: identity);
+
+        Console.WriteLine();
+        if (code == 0) Console.WriteLine($"✓ Recepción completada: {localTarget}");
+        else Console.WriteLine($"✗ No se pudo recibir (código {code}).");
+        Console.WriteLine("\nPresiona una tecla para volver...");
+        Console.ReadKey(true);
+    }
+
+    // Ejecuta scp con el config/identidad de la sesión. Muestra el progreso en la terminal.
+    static int RunScp(string source, string target, bool recursive, string? identity)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo { FileName = _parameters.Scp, UseShellExecute = false };
+            AddSshConfigArg(psi); // scp admite -F igual que ssh
+            if (identity != null) { psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(identity); }
+            if (recursive) psi.ArgumentList.Add("-r");
+            psi.ArgumentList.Add(source);
+            psi.ArgumentList.Add(target);
+            using var proc = Process.Start(psi);
+            proc?.WaitForExit();
+            return proc?.ExitCode ?? 1;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al ejecutar scp: {ex.Message}");
+            return 1;
+        }
+    }
+
+    // Comprueba si una ruta existe en el remoto (incluye symlinks rotos).
+    static bool RemotePathExists(HostBlock host, string? identity, string path)
+    {
+        try
+        {
+            var script = "test -e " + ShQuote(path) + " || test -L " + ShQuote(path) + "\n";
+            var args = SshPrefixArgs(identity);
+            args.Add(host.Name);
+            args.Add("sh");
+            var (code, _, _) = RunCapture(_parameters.Ssh, args, script);
+            return code == 0;
+        }
+        catch { return false; }
+    }
+
+    // Argumentos comunes de ssh/scp (-F para el config propio e -i para la identidad).
+    static List<string> SshPrefixArgs(string? identity)
+    {
+        var args = new List<string>();
+        if (!string.IsNullOrWhiteSpace(_parameters.SshConfigFile) && File.Exists(ConfigPath))
+        {
+            args.Add("-F");
+            args.Add(ConfigPath);
+        }
+        if (identity != null) { args.Add("-i"); args.Add(identity); }
+        return args;
+    }
+
+    // Ejecuta un proceso capturando stdout/stderr sin imprimir nada en la TUI.
+    // Si se indica 'stdin', se envía a la entrada estándar del proceso.
+    static (int code, string stdout, string stderr) RunCapture(
+        string fileName, List<string> args, string? stdin = null)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = fileName,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        if (stdin != null) psi.RedirectStandardInput = true;
+        foreach (var a in args) psi.ArgumentList.Add(a);
+        using var p = Process.Start(psi)!;
+        if (stdin != null)
+        {
+            p.StandardInput.Write(stdin);
+            p.StandardInput.Close();
+        }
+        var errTask = p.StandardError.ReadToEndAsync();
+        var outStr = p.StandardOutput.ReadToEnd();
+        p.WaitForExit();
+        return (p.ExitCode, outStr, errTask.Result);
+    }
+
+    // Lista un directorio local (incluye ocultos y symlinks).
+    static (List<FileEntry> entries, string resolved, string error) ListLocal(string dir)
+    {
+        var entries = new List<FileEntry>();
+        try
+        {
+            var resolved = Path.GetFullPath(dir);
+            var di = new DirectoryInfo(resolved);
+            if (!di.Exists) return (entries, resolved, "El directorio no existe.");
+            foreach (var info in di.EnumerateFileSystemInfos())
+            {
+                bool isLink = (info.Attributes & FileAttributes.ReparsePoint) != 0;
+                bool isDir = Directory.Exists(info.FullName); // sigue symlinks a carpetas
+                entries.Add(new FileEntry
+                {
+                    Name = info.Name,
+                    IsDir = isDir,
+                    IsSymlink = isLink,
+                    FullPath = info.FullName
+                });
+            }
+            return (entries, resolved, "");
+        }
+        catch (Exception ex)
+        {
+            return (entries, dir, ex.Message);
+        }
+    }
+
+    // Lista un directorio remoto vía ssh + POSIX sh (Linux/macOS/Solaris).
+    static (List<FileEntry> entries, string resolved, string error) ListRemote(
+        string hostName, string? identity, string dir)
+    {
+        var entries = new List<FileEntry>();
+        string resolved = dir;
+        try
+        {
+            var args = SshPrefixArgs(identity);
+            args.Add(hostName);
+            args.Add("sh");
+            var (code, stdout, stderr) = RunCapture(_parameters.Ssh, args, BuildRemoteListScript(dir));
+            if (code != 0)
+                return (entries, resolved, string.IsNullOrWhiteSpace(stderr)
+                    ? $"No se pudo listar '{dir}' (código {code})."
+                    : stderr.Trim());
+
+            foreach (var record in stdout.Split('\0'))
+            {
+                if (record.Length == 0) continue;
+                var parts = record.Split('\t', 3);
+                if (parts.Length < 3) continue;
+                if (parts[0] == "p") { if (parts[2].Length > 0) resolved = parts[2]; continue; }
+                entries.Add(new FileEntry
+                {
+                    Name = parts[2],
+                    IsDir = parts[0] == "d",
+                    IsSymlink = parts[1] == "l",
+                    FullPath = RemoteCombine(resolved, parts[2])
+                });
+            }
+            return (entries, resolved, "");
+        }
+        catch (Exception ex)
+        {
+            return (entries, resolved, ex.Message);
+        }
+    }
+
+    // Script POSIX sh que imprime: p<tab>-<tab>ruta, y por cada entrada
+    // d|f<tab>l|-<tab>nombre, con registros separados por NUL (admite espacios).
+    static string BuildRemoteListScript(string dir)
+    {
+        return
+            "DIR=" + ShQuote(dir) + "\n" +
+            "cd \"$DIR\" || exit 1\n" +
+            "CUR=`pwd -P 2>/dev/null` || CUR=`pwd`\n" +
+            "printf 'p\\t-\\t%s\\000' \"$CUR\"\n" +
+            "for f in * .[!.]* ..?*\n" +
+            "do\n" +
+            "  [ -e \"$f\" ] || [ -L \"$f\" ] || continue\n" +
+            "  if [ -L \"$f\" ]; then\n" +
+            "    if [ -d \"$f\" ]; then T=d; else T=f; fi\n" +
+            "    S=l\n" +
+            "  elif [ -d \"$f\" ]; then T=d; S=-\n" +
+            "  else T=f; S=-\n" +
+            "  fi\n" +
+            "  printf '%s\\t%s\\t%s\\000' \"$T\" \"$S\" \"$f\"\n" +
+            "done\n";
+    }
+
+
+    // Selector de archivos/carpetas local o remoto. Devuelve la ruta y si es carpeta.
+    static (string path, bool isDir)? PickPath(HostBlock host, string? identity,
+                                               bool remote, bool folderMode, string title)
+    {
+        string current = remote ? "." : Directory.GetCurrentDirectory();
+        string filter = "";
+        int sel = 0, offset = 0;
+        bool editing = false, reload = true;
+        var all = new List<FileEntry>();
+        string error = "";
+
+        while (true)
+        {
+            if (reload)
+            {
+                if (remote)
+                {
+                    var res = ListRemote(host.Name, identity, current);
+                    all = res.entries;
+                    if (!string.IsNullOrEmpty(res.resolved)) current = res.resolved;
+                    error = res.error;
+                }
+                else
+                {
+                    var res = ListLocal(current);
+                    all = res.entries;
+                    if (!string.IsNullOrEmpty(res.resolved)) current = res.resolved;
+                    error = res.error;
+                }
+                reload = false;
+            }
+
+            // Entradas visibles: "usar esta carpeta", "subir" y el listado filtrado.
+            var items = new List<PickerItem>
+            {
+                new PickerItem { Kind = PickerKind.Current, Label = ".  (usar esta carpeta)" },
+                new PickerItem { Kind = PickerKind.Parent,  Label = "..  (subir)" }
+            };
+            foreach (var e in all
+                .Where(e => string.IsNullOrEmpty(filter)
+                            || e.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(e => e.IsDir)
+                .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                items.Add(new PickerItem
+                {
+                    Kind = e.IsDir ? PickerKind.Directory : PickerKind.File,
+                    Label = e.Name + (e.IsDir ? "/" : "") + (e.IsSymlink ? " @" : ""),
+                    Entry = e
+                });
+            }
+
+            if (sel >= items.Count) sel = items.Count - 1;
+            if (sel < 0) sel = 0;
+
+            int width = BoxWidth();
+            int maxRows = PickerMaxRows();
+            if (sel < offset) offset = sel;
+            if (sel >= offset + maxRows) offset = sel - maxRows + 1;
+            if (offset < 0) offset = 0;
+
+            Console.Clear();
+            BoxTop(title, width);
+            BoxLine("Ruta: " + current, width);
+            BoxLine("Filtro: " + (editing ? filter + "_"
+                              : (filter.Length == 0 ? "(sin filtro)" : filter)), width);
+            if (!string.IsNullOrEmpty(error)) BoxLine("Error: " + error, width);
+            BoxSeparator(width);
+            int last = Math.Min(items.Count, offset + maxRows);
+            for (int i = offset; i < last; i++)
+                BoxRow(items[i].Label, width, i == sel);
+            BoxSeparator(width);
+            BoxLine(folderMode
+                ? "ESPACIO: seleccionar carpeta   ENTER: entrar   BACKSPACE: subir   /: filtrar   ESC: cancelar"
+                : "ESPACIO: seleccionar   ENTER: entrar/abrir   BACKSPACE: subir   /: filtrar   ESC: cancelar",
+                width);
+            BoxBottom(width);
+
+            var k = Console.ReadKey(true);
+
+            // Edición del filtro: las teclas se acumulan en el texto del filtro.
+            if (editing)
+            {
+                if (k.Key == ConsoleKey.Enter) editing = false;
+                else if (k.Key == ConsoleKey.Escape) { filter = ""; editing = false; }
+                else if (k.Key == ConsoleKey.Backspace) { if (filter.Length > 0) filter = filter[..^1]; }
+                else if (!char.IsControl(k.KeyChar)) filter += k.KeyChar;
+                continue;
+            }
+
+
+            switch (k.Key)
+            {
+                case ConsoleKey.UpArrow:
+                    sel = (sel - 1 + items.Count) % items.Count; continue;
+                case ConsoleKey.DownArrow:
+                    sel = (sel + 1) % items.Count; continue;
+                case ConsoleKey.Home:
+                    sel = 0; continue;
+                case ConsoleKey.End:
+                    sel = items.Count - 1; continue;
+                case ConsoleKey.PageUp:
+                    sel = Math.Max(0, sel - maxRows); continue;
+                case ConsoleKey.PageDown:
+                    sel = Math.Min(items.Count - 1, sel + maxRows); continue;
+                case ConsoleKey.Backspace:
+                    current = remote ? RemoteParent(current) : LocalParent(current);
+                    sel = 0; offset = 0; reload = true; continue;
+                case ConsoleKey.Escape:
+                    return null;
+                case ConsoleKey.Enter:
+                    {
+                        var it = items[sel];
+                        if (it.Kind == PickerKind.Parent)
+                        {
+                            current = remote ? RemoteParent(current) : LocalParent(current);
+                            sel = 0; offset = 0; reload = true;
+                        }
+                        else if (it.Kind == PickerKind.Current)
+                        {
+                            return (current, true);
+                        }
+                        else if (it.Entry!.IsDir)
+                        {
+                            current = it.Entry!.FullPath;
+                            sel = 0; offset = 0; reload = true;
+                        }
+                        else if (!folderMode)
+                        {
+                            return (it.Entry!.FullPath, false);
+                        }
+                        continue;
+                    }
+            }
+
+            if (k.KeyChar == ' ')
+            {
+                var it = items[sel];
+                if (it.Kind == PickerKind.Current)
+                    return (current, true);
+                if (it.Kind == PickerKind.Parent)
+                {
+                    current = remote ? RemoteParent(current) : LocalParent(current);
+                    sel = 0; offset = 0; reload = true;
+                    continue;
+                }
+                if (it.Kind == PickerKind.Directory)
+                    return (it.Entry!.FullPath, true);
+                if (it.Kind == PickerKind.File && !folderMode)
+                    return (it.Entry!.FullPath, false);
+                continue;
+            }
+
+            if (k.KeyChar == '/')
+            {
+                editing = true;
+                continue;
+            }
+        }
+    }
+
+    static int PickerMaxRows()
+    {
+        int rows = 15;
+        try { rows = Math.Max(3, Console.WindowHeight - 12); } catch { }
+        return rows;
+    }
+
+    // Comilla un texto para el shell POSIX (comillas simples con escape de ').
+    static string ShQuote(string s) => "'" + s.Replace("'", "'\\''") + "'";
+
+    static string RemoteCombine(string dir, string name) =>
+        dir.EndsWith("/", StringComparison.Ordinal) ? dir + name : dir + "/" + name;
+
+    static string RemoteParent(string path)
+    {
+        if (string.IsNullOrEmpty(path) || path == ".") return ".";
+        if (path == "/") return "/";
+        var p = path.TrimEnd('/');
+        if (p.Length == 0) return "/";
+        int idx = p.LastIndexOf('/');
+        return idx <= 0 ? "/" : p[..idx];
+    }
+
+    static string LocalParent(string path)
+    {
+        try
+        {
+            var root = Path.GetPathRoot(path);
+            if (!string.IsNullOrEmpty(root) && string.Equals(path, root, StringComparison.Ordinal))
+                return path;
+            var parent = Path.GetDirectoryName(path);
+            return string.IsNullOrEmpty(parent) ? path : parent;
+        }
+        catch { return path; }
+    }
+
+    static string RemoteBaseName(string path)
+    {
+        var p = path.TrimEnd('/');
+        if (p.Length == 0) return "/";
+        int idx = p.LastIndexOf('/');
+        return idx >= 0 ? p[(idx + 1)..] : p;
+    }
+
 
     static string? FindPublicKey(string? privateKeyPath)
     {
@@ -1393,6 +1889,7 @@ class Parameters
     public string Ssh = "ssh";
     public string SshKeygen = "ssh-keygen";
     public string SshCopyId = "ssh-copy-id";
+    public string Scp = "scp";
 
     // Archivo de configuración SSH que gestiona la aplicación. Vacío = ~/.ssh/config,
     // el valor por defecto de ssh (en ese caso no se pasa -F).
@@ -1433,6 +1930,7 @@ class Parameters
                 case "ssh":                  p.Ssh = value; break;
                 case "ssh-keygen":           p.SshKeygen = value; break;
                 case "ssh-copy-id":          p.SshCopyId = value; break;
+                case "scp":                  p.Scp = value; break;
                 case "config":               p.SshConfigFile = value; break;
                 case "identity":             p.Identity = value; break;
                 case "highlight-foreground": p.HighlightForeground = ParseColor(value, p.HighlightForeground); break;
@@ -1465,6 +1963,7 @@ class Parameters
         sb.Append("ssh = ssh\n");
         sb.Append("ssh-keygen = ssh-keygen\n");
         sb.Append("ssh-copy-id = ssh-copy-id\n");
+        sb.Append("scp = scp\n");
         sb.Append('\n');
         sb.Append("# Archivo de configuración SSH que gestiona la aplicación.\n");
         sb.Append("# Vacío = ~/.ssh/config, el valor por defecto de ssh (no se pasa -F).\n");
@@ -1486,3 +1985,22 @@ class Parameters
         File.WriteAllText(path, sb.ToString());
     }
 }
+
+// Entrada de archivo/carpeta usada por el selector (local o remoto).
+class FileEntry
+{
+    public string Name = "";
+    public bool IsDir;
+    public bool IsSymlink;
+    public string FullPath = "";
+}
+
+enum PickerKind { Current, Parent, Directory, File }
+
+class PickerItem
+{
+    public PickerKind Kind;
+    public string Label = "";
+    public FileEntry? Entry;
+}
+
