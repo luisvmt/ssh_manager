@@ -4,9 +4,14 @@ TUI de consola en **C# / .NET 10** (`net10.0`) para gestionar conexiones SSH. Si
 
 ## Contexto obligatorio
 
-- Las convenciones y el estado del proyecto viven en `.clinerules` y `memory-bank/*.md`. Léelos si la tarea toca arquitectura, configuración o UX; mantenlos sincronizados al cambiar el código (es costumbre del repo).
+- Las convenciones del proyecto viven en este archivo, que es la fuente única para cualquier agente (OpenCode, Cline u otro). El estado del proyecto está en `memory-bank/*.md`: léelo si la tarea toca arquitectura, configuración o UX, y mantenlo sincronizado al cambiar el código (es costumbre del repo).
 - **Todo el código, comentarios, cadenas de UI y documentación van en español.**
 - `Program.cs` (~2200 líneas) es la fuente de verdad. La clase estática `Program` (namespace `SshManager`) está arriba; las clases de apoyo (`HostBlock`, `ConfigLine`, `SshConfig`, `Parameters`, `FileEntry`, `PickerKind`, `PickerItem`) al final del mismo archivo.
+
+## Control de versiones
+
+- Antes de empezar cualquier tarea que modifique archivos, ejecuta `git status --porcelain`. Si hay cambios sin commitear, créalos como commit de seguridad: `git add -A && git commit -m "checkpoint: antes de <tarea>"`.
+- Antes de ejecutar `dotnet build` no hace falta otro commit; el checkpoint inicial cubre la tarea.
 
 ## Comandos
 
@@ -40,11 +45,12 @@ Tras cualquier cambio de código: `dotnet build` y confirmar **0 advertencias**.
 
 - Formato `clave = valor`; claves ausentes o inválidas conservan el valor por defecto.
 - Claves: `ssh`, `ssh-keygen`, `ssh-copy-id`, `scp`, `config`, `identity`, `max-servers` y los pares de color `highlight-*`, `list-*`, `hint-*`, `notice-*`.
-- Añadir una clave exige tocar **cinco sitios**: campo en `Parameters`, rama en `Parameters.Load`, `Parameters.WriteTemplate`, `parameters.conf` y `PrintHelp` (además de `.clinerules`/memory-bank).
+- Añadir una clave exige tocar **cinco sitios**: campo en `Parameters`, rama en `Parameters.Load`, `Parameters.WriteTemplate`, `parameters.conf` y `PrintHelp` (además del memory-bank).
 
 ## Arquitectura y convenciones
 
 - `Main` parsea argumentos y, sin ellos, entra en el bucle de la TUI: carga `SshConfig`, dibuja con `ShowMenu` y despacha `MenuAction` (valores como `Connect`, `SendFile`, `ReceiveFile`). Las acciones sobre host comprueban que haya selección.
+- Convenciones C# estándar: métodos estáticos en PascalCase, variables locales en camelCase.
 - `SshConfig` conserva el texto original de las líneas SSH (`ConfigLine.Raw`) y el preludio. No reformatees bloques existentes: editar/añadir/eliminar debe preservar comentarios y líneas ajenas.
 - `SshConfig.Save` escribe **siempre LF** (portabilidad) y aplica permisos `600` en Unix. No cambies esto por `Environment.NewLine`.
 - Los tags se guardan como comentario `# Tags: a, b` inmediatamente antes de la línea `Host`; solo se reconoce el primer patrón de `Host` como nombre del servidor.
@@ -62,5 +68,6 @@ Tras cualquier cambio de código: `dotnet build` y confirmar **0 advertencias**.
 ## Seguridad
 
 - No leas, muestres ni copies `id_ed25519` ni el contenido de `config`.
-- Ojo: `.clineignore` los excluye del contexto del asistente, pero **Git los sigue rastreando** (también los `ssh-backup-*.tar.gz`). No los añadas a commits nuevos ni generes más artefactos con secretos.
+- `.clineignore` los excluye del contexto de Cline, pero **OpenCode no lo lee**: en cualquier agente, respeta esta regla aunque no haya un archivo de exclusión que lo imponga.
+- Ojo: **Git los sigue rastreando** (también los `ssh-backup-*.tar.gz`). No los añadas a commits nuevos ni generes más artefactos con secretos.
 - Confirma antes de sobrescribir archivos (patrón `s/N`).

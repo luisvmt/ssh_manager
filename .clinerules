@@ -1,40 +1,18 @@
 # Reglas del proyecto — SSH Manager
 
-## Identidad
-- **SSH Manager**: TUI (interfaz de texto) para gestionar conexiones SSH.
-- **Lenguaje**: C# / .NET 10 (`net10.0`), con `Nullable` e `ImplicitUsings` habilitados.
-- **Estructura**: un único archivo `Program.cs` con la clase estática `Program` (namespace `SshManager`). Las clases de apoyo (`Parameters`, `HostBlock`, `FileEntry`, `PickerItem`, `PickerKind`) están al final del mismo archivo.
+Lee y sigue siempre `AGENTS.md` en la raíz del repositorio: es la fuente única de convenciones, comandos y gotchas del proyecto (compilación, estilo, configuración, herramientas externas y seguridad). No dupliques su contenido aquí. Si hay conflicto entre este archivo y `AGENTS.md`, prevalece `AGENTS.md`.
 
-## Compilación y ejecución
-- Compilar: `dotnet build` — debe terminar con **0 errores y 0 advertencias**.
-- Publicar (self-contained, single-file):
-  - Windows: `dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true`
-  - Linux:   `dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true`
-- Tras cualquier cambio de código, compilar y verificar antes de dar por finalizado.
+## Específico de Cline
 
-## Estilo de código
-- Código, comentarios y cadenas de UI **en español**.
-- Convenciones C# estándar: métodos estáticos en PascalCase, variables locales en camelCase.
-- La TUI se dibuja con helpers propios: `BoxTop`, `BoxLine`, `BoxRow`, `BoxSeparator`, `BoxBottom`, `BoxGrid`, `BoxWidth`.
-- El flujo de acciones se gestiona con el `enum MenuAction` y el dispatch en `Main`.
-
-## Configuración (`parameters.conf`)
-- Toda la configuración externa vive en `parameters.conf` (formato `clave = valor`; las claves ausentes usan su valor por defecto).
-- Claves soportadas: `ssh`, `ssh-keygen`, `ssh-copy-id`, `scp`, `config`, `identity`, `xidentity`, `max-servers`, `highlight-foreground`, `highlight-background`, `list-foreground`, `list-background`, `hint-foreground`, `hint-background`, `notice-foreground`, `notice-background`.
-- Para añadir una clave nueva hay que tocar: la propiedad en `Parameters`, la lectura en `Parameters.Load`, la plantilla que se genera al crearlo y el propio `parameters.conf`. Mantener `--help` sincronizado.
-
-## Herramientas externas
-- `ssh`, `scp`, `ssh-keygen`, `ssh-copy-id` se invocan mediante `ProcessStartInfo` (con `ArgumentList`), nunca con cadenas interpoladas sin escapar.
-- Los comandos remotos deben ser **100 % POSIX `sh`** (compatibles con Linux, macOS y Solaris): usar `printf`, `test -e`/`test -L`, backticks (no `$(...)`) y evitar *bashisms*.
-- **`scp`**: las rutas remotas (`host:ruta`) se pasan **sin comillas**; OpenSSH ≥ 9 usa SFTP por defecto (la ruta no pasa por shell) y comillas simples se tratan como parte del nombre. `ShQuote` se reserva a los scripts `ssh host sh`.
-
-## Seguridad
-- **Nunca** commitear ni incluir en el contexto las claves privadas (`id_ed25519`) ni el `config` de SSH. Ver `.gitignore` y `.clineignore`.
-- Confirmar siempre antes de sobrescribir archivos (patrón `s/N`).
-
-## Auto Compact
+### Auto Compact
 - Mantener **Auto Compact habilitado** en los ajustes de Cline (viene activo por defecto). Antes de que se llene la ventana de contexto, Cline resume automáticamente la conversación.
 - En hitos importantes, pedir "update memory bank" para no perder el estado entre sesiones.
+
+### Ignorados
+- Los archivos y carpetas que Cline no debe leer están en `.clineignore`. Las reglas de seguridad detalladas (claves privadas y `config` de SSH) están en `AGENTS.md`.
+
+### Instrucción al modelo
+Al planificar, responde solo con el formato solicitado (ej. lista o JSON). No incluyas introducciones, explicaciones ni texto de relleno. Prioriza el orden lógico y las restricciones de tiempo dadas.
 
 ---
 
@@ -62,6 +40,3 @@ El Memory Bank consta de archivos núcleo y archivos de contexto opcionales, tod
 - "update memory bank" — revisar y actualizar toda la documentación.
 
 RECUERDA: Después de cada reinicio de memoria, empiezo completamente desde cero. El Memory Bank es mi único vínculo con el trabajo anterior. Debe mantenerse con precisión y claridad, pues mi eficacia depende por completo de su exactitud.
-
-## Instruccion al modelo
-Al planificar, responde solo con el formato solicitado (ej. lista o JSON). No incluyas introducciones, explicaciones ni texto de relleno. Prioriza el orden lógico y las restricciones de tiempo dadas.
