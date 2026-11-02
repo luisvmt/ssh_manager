@@ -331,6 +331,12 @@ class Program
         Console.WriteLine("    max-servers           = 15       (servidores visibles en pantalla)");
         Console.WriteLine("    highlight-foreground  = Yellow   (texto de la fila resaltada)");
         Console.WriteLine("    highlight-background  = Blue     (fondo de la fila resaltada)");
+        Console.WriteLine("    list-foreground       = Yellow   (texto de las filas no resaltadas)");
+        Console.WriteLine("    list-background       =          (fondo de las filas; vacío = sin fondo)");
+        Console.WriteLine("    hint-foreground       = Red      (línea de ayuda del selector, ESPACIO)");
+        Console.WriteLine("    hint-background       =          (fondo de la ayuda; vacío = sin fondo)");
+        Console.WriteLine("    notice-foreground     = Red      (avisos del selector, p. ej. usa ESPACIO)");
+        Console.WriteLine("    notice-background     =          (fondo de los avisos; vacío = sin fondo)");
         Console.WriteLine();
         Console.WriteLine("  Si 'config' tiene una ruta, el programa gestiona ese archivo y lo pasa");
         Console.WriteLine("  a ssh con -F. Si 'config' o 'identity' están vacíos se usan los valores");
@@ -523,6 +529,9 @@ class Program
 
     enum MenuAction { Connect, ExecCommand, CopyKey, SendFile, ReceiveFile, SelectKey, GenerateKey, Add, Edit, Delete, Filter, Backup, Quit }
 
+    // Modo de la ventana emergente de texto dentro del selector de rutas.
+    enum PromptKind { None, Filter, GoTo }
+
     // ---------- Dibujo de cajas ----------
 
     static int BoxWidth()
@@ -558,6 +567,18 @@ class Program
     static void BoxLine(string text, int width) =>
         Console.WriteLine("│" + FitLine(text, width) + "│");
 
+    // Línea de caja con color de texto y fondo opcional (fondo null = sin cambiar).
+    static void BoxLineColored(string text, int width, ConsoleColor fg, ConsoleColor? bg)
+    {
+        Console.Write("│");
+        var s = FitLine(text, width);
+        Console.ForegroundColor = fg;
+        if (bg.HasValue) Console.BackgroundColor = bg.Value;
+        Console.Write(s);
+        Console.ResetColor();
+        Console.WriteLine("│");
+    }
+
     static void BoxRow(string text, int width, bool selected)
     {
         Console.Write("│");
@@ -570,8 +591,9 @@ class Program
         }
         else
         {
-            // Los servidores no seleccionados se muestran en amarillo.
-            Console.ForegroundColor = ConsoleColor.Yellow;
+            // Colores de las filas no seleccionadas, configurables en "parameters.conf".
+            Console.ForegroundColor = _parameters.ListForeground;
+            if (_parameters.ListBackground.HasValue) Console.BackgroundColor = _parameters.ListBackground.Value;
         }
         Console.Write(s);
         Console.ResetColor();
@@ -1036,7 +1058,8 @@ class Program
         if (source == null) return;
 
         var dest = PickPath(host, identity, remote: true, folderMode: true,
-                            title: $"Enviar archivo · Destino en {host.Name}");
+                            title: $"Enviar archivo · Destino en {host.Name}",
+                            info: $"Origen seleccionado: {source.Value.path}{(source.Value.isDir ? "  (carpeta)" : "")}");
         if (dest == null) return;
 
         var originalName = Path.GetFileName(source.Value.path.TrimEnd(
@@ -1065,7 +1088,7 @@ class Program
         Console.WriteLine("\nTransfiriendo...\n");
         int code = RunScp(
             source.Value.path,
-            host.Name + ":" + ShQuote(remoteTarget),
+            host.Name + ":" + remoteTarget,
             recursive: source.Value.isDir,
             identity: identity);
 
@@ -1086,7 +1109,8 @@ class Program
         if (source == null) return;
 
         var dest = PickPath(host, identity, remote: false, folderMode: true,
-                            title: "Recibir archivo · Destino (PC local)");
+                            title: "Recibir archivo · Destino (PC local)",
+                            info: $"Origen seleccionado: {host.Name}:{source.Value.path}{(source.Value.isDir ? "  (carpeta)" : "")}");
         if (dest == null) return;
 
         var originalName = RemoteBaseName(source.Value.path);
@@ -1113,7 +1137,7 @@ class Program
 
         Console.WriteLine("\nTransfiriendo...\n");
         int code = RunScp(
-            host.Name + ":" + ShQuote(source.Value.path),
+            host.Name + ":" + source.Value.path,
             localTarget,
             recursive: source.Value.isDir,
             identity: identity);
@@ -1152,7 +1176,13 @@ class Program
     {
         try
         {
-            var script = "test -e " + ShQuote(path) + " || test -L " + ShQuote(path) + "\n";
+            var script =
+                "P=" + ShQuote(path) + "\n" +
+                "case \"$P\" in\n" +
+                "  \"~\") P=\"$HOME\" ;;\n" +
+                "  \"~/\"*) P=\"$HOME/${P#\\~/}\" ;;\n" +
+                "esac\n" +
+                "test -e \"$P\" || test -L \"$P\"\n";
             var args = SshPrefixArgs(identity);
             args.Add(host.Name);
             args.Add("sh");
@@ -1275,6 +1305,10 @@ class Program
     {
         return
             "DIR=" + ShQuote(dir) + "\n" +
+            "case \"$DIR\" in\n" +
+            "  \"~\") DIR=\"$HOME\" ;;\n" +
+            "  \"~/\"*) DIR=\"$HOME/${DIR#\\~/}\" ;;\n" +
+            "esac\n" +
             "cd \"$DIR\" || exit 1\n" +
             "CUR=`pwd -P 2>/dev/null` || CUR=`pwd`\n" +
             "printf 'p\\t-\\t%s\\000' \"$CUR\"\n" +
@@ -1294,12 +1328,16 @@ class Program
 
     // Selector de archivos/carpetas local o remoto. Devuelve la ruta y si es carpeta.
     static (string path, bool isDir)? PickPath(HostBlock host, string? identity,
-                                               bool remote, bool folderMode, string title)
+                                               bool remote, bool folderMode, string title,
+                                               string? info = null)
     {
         string current = remote ? "." : Directory.GetCurrentDirectory();
         string filter = "";
+        string promptText = "";
+        PromptKind prompt = PromptKind.None;
+        string notice = "";
         int sel = 0, offset = 0;
-        bool editing = false, reload = true;
+        bool reload = true;
         var all = new List<FileEntry>();
         string error = "";
 
@@ -1355,30 +1393,49 @@ class Program
 
             Console.Clear();
             BoxTop(title, width);
+            if (!string.IsNullOrEmpty(info)) BoxLine(info!, width);
             BoxLine("Ruta: " + current, width);
-            BoxLine("Filtro: " + (editing ? filter + "_"
-                              : (filter.Length == 0 ? "(sin filtro)" : filter)), width);
+            BoxLine("Filtro: " + (filter.Length == 0 ? "(sin filtro)" : filter), width);
             if (!string.IsNullOrEmpty(error)) BoxLine("Error: " + error, width);
+            if (!string.IsNullOrEmpty(notice)) BoxLineColored(notice, width, _parameters.NoticeForeground, _parameters.NoticeBackground);
             BoxSeparator(width);
             int last = Math.Min(items.Count, offset + maxRows);
             for (int i = offset; i < last; i++)
                 BoxRow(items[i].Label, width, i == sel);
             BoxSeparator(width);
-            BoxLine(folderMode
-                ? "ESPACIO: seleccionar carpeta   ENTER: entrar   BACKSPACE: subir   /: filtrar   ESC: cancelar"
-                : "ESPACIO: seleccionar   ENTER: entrar/abrir   BACKSPACE: subir   /: filtrar   ESC: cancelar",
-                width);
+            BoxLineColored(folderMode
+                ? "ESPACIO: seleccionar carpeta   ENTER: entrar   BACKSPACE: subir   /: filtrar   i: ir a   ESC: cancelar"
+                : "ESPACIO: seleccionar   ENTER: entrar   BACKSPACE: subir   /: filtrar   i: ir a   ESC: cancelar",
+                width, _parameters.HintForeground, _parameters.HintBackground);
             BoxBottom(width);
 
-            var k = Console.ReadKey(true);
+            if (prompt != PromptKind.None)
+                DrawPromptBox(width, prompt == PromptKind.Filter ? "Filtro a aplicar" : "Ir a carpeta", promptText);
 
-            // Edición del filtro: las teclas se acumulan en el texto del filtro.
-            if (editing)
+            var k = Console.ReadKey(true);
+            notice = "";
+
+            // Ventana emergente de texto (filtro / ir a ruta).
+            if (prompt != PromptKind.None)
             {
-                if (k.Key == ConsoleKey.Enter) editing = false;
-                else if (k.Key == ConsoleKey.Escape) { filter = ""; editing = false; }
-                else if (k.Key == ConsoleKey.Backspace) { if (filter.Length > 0) filter = filter[..^1]; }
-                else if (!char.IsControl(k.KeyChar)) filter += k.KeyChar;
+                if (k.Key == ConsoleKey.Enter)
+                {
+                    if (prompt == PromptKind.Filter)
+                    {
+                        filter = promptText;
+                    }
+                    else
+                    {
+                        var target = ResolveNavigate(remote, current, promptText);
+                        if (target == null) notice = "Ruta no válida: " + promptText;
+                        else { current = target; sel = 0; offset = 0; filter = ""; reload = true; }
+                    }
+                    prompt = PromptKind.None;
+                    continue;
+                }
+                if (k.Key == ConsoleKey.Escape) { prompt = PromptKind.None; continue; }
+                if (k.Key == ConsoleKey.Backspace) { if (promptText.Length > 0) promptText = promptText[..^1]; continue; }
+                if (!char.IsControl(k.KeyChar)) promptText += k.KeyChar;
                 continue;
             }
 
@@ -1398,30 +1455,28 @@ class Program
                 case ConsoleKey.PageDown:
                     sel = Math.Min(items.Count - 1, sel + maxRows); continue;
                 case ConsoleKey.Backspace:
+                    // Al cambiar de directorio el filtro se borra.
                     current = remote ? RemoteParent(current) : LocalParent(current);
-                    sel = 0; offset = 0; reload = true; continue;
+                    sel = 0; offset = 0; filter = ""; reload = true; continue;
                 case ConsoleKey.Escape:
                     return null;
                 case ConsoleKey.Enter:
                     {
+                        // ENTER solo navega; nunca selecciona (eso es exclusivo de ESPACIO).
                         var it = items[sel];
                         if (it.Kind == PickerKind.Parent)
                         {
                             current = remote ? RemoteParent(current) : LocalParent(current);
-                            sel = 0; offset = 0; reload = true;
+                            sel = 0; offset = 0; filter = ""; reload = true;
                         }
-                        else if (it.Kind == PickerKind.Current)
-                        {
-                            return (current, true);
-                        }
-                        else if (it.Entry!.IsDir)
+                        else if (it.Kind == PickerKind.Directory)
                         {
                             current = it.Entry!.FullPath;
-                            sel = 0; offset = 0; reload = true;
+                            sel = 0; offset = 0; filter = ""; reload = true;
                         }
-                        else if (!folderMode)
+                        else
                         {
-                            return (it.Entry!.FullPath, false);
+                            notice = "Usa ESPACIO para seleccionar (ENTER solo entra en carpetas).";
                         }
                         continue;
                     }
@@ -1435,7 +1490,7 @@ class Program
                 if (it.Kind == PickerKind.Parent)
                 {
                     current = remote ? RemoteParent(current) : LocalParent(current);
-                    sel = 0; offset = 0; reload = true;
+                    sel = 0; offset = 0; filter = ""; reload = true;
                     continue;
                 }
                 if (it.Kind == PickerKind.Directory)
@@ -1447,7 +1502,15 @@ class Program
 
             if (k.KeyChar == '/')
             {
-                editing = true;
+                prompt = PromptKind.Filter;
+                promptText = filter;
+                continue;
+            }
+
+            if (k.KeyChar == 'i' || k.KeyChar == 'I')
+            {
+                prompt = PromptKind.GoTo;
+                promptText = "";
                 continue;
             }
         }
@@ -1459,6 +1522,68 @@ class Program
         try { rows = Math.Max(3, Console.WindowHeight - 12); } catch { }
         return rows;
     }
+
+    // Resuelve la ruta escrita por el usuario en la opción "Ir a carpeta".
+    static string? ResolveNavigate(bool remote, string current, string input)
+    {
+        var text = input.Trim();
+        if (text.Length == 0) return null;
+
+        if (remote)
+        {
+            if (text.StartsWith("/", StringComparison.Ordinal)
+                || text == "~" || text.StartsWith("~/", StringComparison.Ordinal))
+                return text;
+            return RemoteCombine(current, text);
+        }
+
+        string target;
+        if (text == "~")
+            target = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        else if (text.StartsWith("~/", StringComparison.Ordinal)
+                 || text.StartsWith("~\\", StringComparison.Ordinal))
+            target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), text[2..]);
+        else
+            target = Path.IsPathRooted(text) ? text : Path.Combine(current, text);
+
+        try { target = Path.GetFullPath(target); } catch { return null; }
+        return Directory.Exists(target) ? target : null;
+    }
+
+    // Dibuja una caja modal encima del selector para pedir texto (filtro / ir a).
+    static void DrawPromptBox(int screenWidth, string title, string text)
+    {
+        try
+        {
+            int w = Math.Min(screenWidth - 2, 60);
+            if (w < 28) w = 28;
+            int left = Math.Max(0, (screenWidth - w) / 2);
+            int top = 2;
+            try { top = Math.Max(1, Console.WindowHeight / 3); } catch { }
+
+            string head = "─ " + title + " ";
+            string topLine = "┌" + head + new string('─', Math.Max(0, w - 2 - head.Length)) + "┐";
+            string textLine = "│" + PadInside(" " + text + "_", w - 2) + "│";
+            string hintLine = "│" + PadInside(" ENTER: aceptar   ESC: cancelar", w - 2) + "│";
+            string bottomLine = "└" + new string('─', Math.Max(0, w - 2)) + "┘";
+
+            Console.SetCursorPosition(left, top);
+            Console.Write(topLine);
+            Console.SetCursorPosition(left, top + 1);
+            Console.Write(textLine);
+            Console.SetCursorPosition(left, top + 2);
+            Console.Write(hintLine);
+            Console.SetCursorPosition(left, top + 3);
+            Console.Write(bottomLine);
+
+            int cx = left + 1 + Math.Min((" " + text + "_").Length - 1, Math.Max(0, w - 3));
+            Console.SetCursorPosition(Math.Max(left + 1, cx), top + 1);
+        }
+        catch { }
+    }
+
+    static string PadInside(string s, int len)
+        => s.Length >= len ? s[..len] : s.PadRight(len);
 
     // Comilla un texto para el shell POSIX (comillas simples con escape de ').
     static string ShQuote(string s) => "'" + s.Replace("'", "'\\''") + "'";
@@ -1903,6 +2028,18 @@ class Parameters
     public ConsoleColor HighlightForeground = ConsoleColor.Yellow;
     public ConsoleColor HighlightBackground = ConsoleColor.Blue;
 
+    // Color (y fondo opcional) de las filas no seleccionadas de la lista.
+    public ConsoleColor ListForeground = ConsoleColor.Yellow;
+    public ConsoleColor? ListBackground = null;
+
+    // Color (y fondo opcional) de la línea de ayuda/teclas del selector de archivos.
+    public ConsoleColor HintForeground = ConsoleColor.Red;
+    public ConsoleColor? HintBackground = null;
+
+    // Color (y fondo opcional) de los avisos del selector (p. ej. "Usa ESPACIO…").
+    public ConsoleColor NoticeForeground = ConsoleColor.Red;
+    public ConsoleColor? NoticeBackground = null;
+
     // Número máximo de servidores visibles a la vez en la pantalla principal.
     public int MaxServers = 15;
 
@@ -1935,6 +2072,12 @@ class Parameters
                 case "identity":             p.Identity = value; break;
                 case "highlight-foreground": p.HighlightForeground = ParseColor(value, p.HighlightForeground); break;
                 case "highlight-background": p.HighlightBackground = ParseColor(value, p.HighlightBackground); break;
+                case "list-foreground":      p.ListForeground = ParseColor(value, p.ListForeground); break;
+                case "list-background":      p.ListBackground = ParseColorOrNone(value); break;
+                case "hint-foreground":      p.HintForeground = ParseColor(value, p.HintForeground); break;
+                case "hint-background":      p.HintBackground = ParseColorOrNone(value); break;
+                case "notice-foreground":    p.NoticeForeground = ParseColor(value, p.NoticeForeground); break;
+                case "notice-background":    p.NoticeBackground = ParseColorOrNone(value); break;
                 case "max-servers":
                     // Solo valores positivos; si no es válido se conserva el valor por defecto.
                     if (int.TryParse(value, out int maxServers) && maxServers > 0) p.MaxServers = maxServers;
@@ -1951,6 +2094,19 @@ class Parameters
         && Enum.IsDefined(color)
             ? color
             : fallback;
+
+    // Igual que ParseColor pero admite "sin fondo" (vacío, "none", "default" o "-").
+    static ConsoleColor? ParseColorOrNone(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var v = value.Trim();
+        if (v.Equals("none", StringComparison.OrdinalIgnoreCase)
+            || v.Equals("default", StringComparison.OrdinalIgnoreCase)
+            || v == "-") return null;
+        return Enum.TryParse<ConsoleColor>(v, ignoreCase: true, out var color) && Enum.IsDefined(color)
+            ? color
+            : null;
+    }
 
     // Plantilla de modelo que se ofrece crear cuando el archivo no existe.
     public static void WriteTemplate(string path)
@@ -1982,6 +2138,18 @@ class Parameters
         sb.Append("# Colores de la fila resaltada (nombres de ConsoleColor).\n");
         sb.Append("highlight-foreground = Yellow\n");
         sb.Append("highlight-background = Blue\n");
+        sb.Append("# Color de las filas no seleccionadas de la lista.\n");
+        sb.Append("list-foreground = Yellow\n");
+        sb.Append("# Fondo de las filas no seleccionadas (vacío = sin fondo).\n");
+        sb.Append("list-background =\n");
+        sb.Append("# Color de la línea de ayuda/teclas del selector de archivos.\n");
+        sb.Append("hint-foreground = Red\n");
+        sb.Append("# Fondo de la línea de ayuda (vacío = sin fondo).\n");
+        sb.Append("hint-background =\n");
+        sb.Append("# Color de los avisos del selector (p. ej. \"Usa ESPACIO para seleccionar\").\n");
+        sb.Append("notice-foreground = Red\n");
+        sb.Append("# Fondo de los avisos (vacío = sin fondo).\n");
+        sb.Append("notice-background =\n");
         File.WriteAllText(path, sb.ToString());
     }
 }

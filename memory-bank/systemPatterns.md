@@ -10,7 +10,8 @@
 
 ## Dibujo de la interfaz
 - Helpers estáticos: `BoxTop`, `BoxLine`, `BoxRow`, `BoxSeparator`, `BoxBottom`, `BoxGrid`, `BoxWidth` (ancho recortado a 24–100 columnas).
-- Fila resaltada con colores de `parameters.conf`.
+- Fila resaltada con colores de `parameters.conf` (`highlight-foreground`/`highlight-background`).
+- Filas no resaltadas configurables (`list-foreground`/`list-background`); la línea de ayuda del selector (`ESPACIO`) usa `hint-foreground`/`hint-background` y los avisos del selector (p. ej. "Usa ESPACIO…") usan `notice-foreground`/`notice-background` (helpers `BoxLineColored`). Los `*-background` vacíos = sin fondo.
 
 ## Configuración (`parameters.conf`)
 - `clave = valor`; claves ausentes usan valor por defecto. La carga está en `Parameters.Load`.
@@ -26,9 +27,12 @@
 
 ## Selector de archivos (`PickPath`)
 - `PickerItem`/`PickerKind` (Current, Parent, Directory, File); `FileEntry` para entradas.
-- Navegación, filtro persistente (subcadena, sin distinguir mayúsculas), `ESPACIO` selecciona, `ENTER` entra/abre, `ESC` cancela.
-- Local usa `Directory.GetCurrentDirectory()`; remoto usa `$HOME`.
+- `ESPACIO` selecciona (exclusivo); `ENTER` solo navega; `BACKSPACE` sube; `/` abre una ventana emergente de filtro (ENTER acepta, ESC cancela); `i` abre la ventana "Ir a carpeta"; `ESC` cancela.
+- El filtro (subcadena, sin distinguir mayúsculas) se borra al cambiar de directorio. `DrawPromptBox` dibuja la caja modal encima del selector.
+- El parámetro opcional `info` muestra el origen ya seleccionado en la ventana de destino. `ResolveNavigate` resuelve rutas tecleadas (absolutas, relativas y `~`; los scripts remotos expanden `~`).
+- Local usa `Directory.GetCurrentDirectory()`; remoto usa `.` (HOME real resuelto con `pwd`).
 
 ## Transferencia con `scp`
-- `RunScp` construye `scp` con `-F`/`-i`, `-r` solo para carpetas, y rutas remotas con `ShQuote`.
+- `RunScp` construye `scp` con `-F`/`-i`, `-r` solo para carpetas.
+- Las rutas remotas (`host:ruta`) se pasan **sin comillas**: OpenSSH ≥ 9 usa SFTP por defecto y la ruta no pasa por shell, por lo que comillas simples se interpretarían como parte del nombre. `ShQuote` queda reservado a los scripts `ssh host sh`.
 - Confirmación de sobrescritura `s/N` comprobando existencia local o remota (`RemotePathExists`).

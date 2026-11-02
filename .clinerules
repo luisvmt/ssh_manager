@@ -20,12 +20,13 @@
 
 ## Configuración (`parameters.conf`)
 - Toda la configuración externa vive en `parameters.conf` (formato `clave = valor`; las claves ausentes usan su valor por defecto).
-- Claves soportadas: `ssh`, `ssh-keygen`, `ssh-copy-id`, `scp`, `config`, `identity`, `xidentity`, `max-servers`, `highlight-foreground`, `highlight-background`.
+- Claves soportadas: `ssh`, `ssh-keygen`, `ssh-copy-id`, `scp`, `config`, `identity`, `xidentity`, `max-servers`, `highlight-foreground`, `highlight-background`, `list-foreground`, `list-background`, `hint-foreground`, `hint-background`, `notice-foreground`, `notice-background`.
 - Para añadir una clave nueva hay que tocar: la propiedad en `Parameters`, la lectura en `Parameters.Load`, la plantilla que se genera al crearlo y el propio `parameters.conf`. Mantener `--help` sincronizado.
 
 ## Herramientas externas
 - `ssh`, `scp`, `ssh-keygen`, `ssh-copy-id` se invocan mediante `ProcessStartInfo` (con `ArgumentList`), nunca con cadenas interpoladas sin escapar.
 - Los comandos remotos deben ser **100 % POSIX `sh`** (compatibles con Linux, macOS y Solaris): usar `printf`, `test -e`/`test -L`, backticks (no `$(...)`) y evitar *bashisms*.
+- **`scp`**: las rutas remotas (`host:ruta`) se pasan **sin comillas**; OpenSSH ≥ 9 usa SFTP por defecto (la ruta no pasa por shell) y comillas simples se tratan como parte del nombre. `ShQuote` se reserva a los scripts `ssh host sh`.
 
 ## Seguridad
 - **Nunca** commitear ni incluir en el contexto las claves privadas (`id_ed25519`) ni el `config` de SSH. Ver `.gitignore` y `.clineignore`.

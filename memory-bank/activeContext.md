@@ -4,6 +4,7 @@
 Finalizada la implementación de **Enviar archivo (`s`)** y **Recibir archivo (`r`)** con `scp`, incluyendo selectores de ruta local/remoto.
 
 ## Cambios recientes
+- Colores configurables ampliados: `list-foreground`/`list-background` (filas no resaltadas), `hint-foreground`/`hint-background` (línea de ayuda del selector, mensaje `ESPACIO`) y `notice-foreground`/`notice-background` (avisos del selector, p. ej. "Usa ESPACIO para seleccionar"). `hint-foreground` y `notice-foreground` por defecto `Red`; `*-background` vacío = sin fondo. Nuevo helper `BoxLineColored` y método `Parameters.ParseColorOrNone`.
 - Nuevo `MenuAction.SendFile` / `MenuAction.ReceiveFile`, dispatch en `Main`, entradas de menú `s`/`r` y documentación en `--help`.
 - Nueva clave `scp = scp` en `Parameters`, loader, plantilla y `parameters.conf`.
 - Nuevas funciones: `SendFileToHost`, `ReceiveFileFromHost`, `RunScp`, `EnsureScp`, `PickPath`, `ListLocal`, `ListRemote`, `BuildRemoteListScript`, `RemotePathExists`, `RunCapture`, `SshPrefixArgs`.
@@ -19,5 +20,8 @@ Finalizada la implementación de **Enviar archivo (`s`)** y **Recibir archivo (`
 
 ## Decisiones activas y consideraciones
 - Remoto solo POSIX; transferencia de carpetas con `scp -r`.
-- Filtro del selector persistente entre subcarpetas y sin distinguir mayúsculas.
-- Selección con `ESPACIO`; `ENTER` entra/abre; `BACKSPACE` sube; `/` filtra; `ESC` cancela.
+- El filtro del selector se **borra al cambiar de directorio** (subir/bajar). Se aplica con `/` en una ventana emergente: `ENTER` acepta, `ESC` cancela sin cambios.
+- Selección **exclusiva con `ESPACIO`**; `ENTER` solo navega (entra en carpetas/subir), nunca selecciona (avisa si se pulsa sobre un archivo).
+- `i` abre la ventana **"Ir a carpeta"** (disponible en origen y destino) para teclear una ruta absoluta/relativa/`~` y navegar.
+- En la ventana de destino se muestra el **origen ya seleccionado** (`info`) en la primera línea del recuadro.
+- Rutas remotas para `scp` van **sin comillas** (OpenSSH ≥ 9 usa SFTP por defecto: la ruta no pasa por shell). `ShQuote` solo para scripts `ssh host sh`.
