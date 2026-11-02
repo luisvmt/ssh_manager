@@ -138,6 +138,8 @@ class Program
                 BoxGrid(new[] { "a Añadir", "k Clave privada", "g Generar clave", "b Backup", "q Salir" }, w, 4);
                 BoxBottom(w);
 
+                // Mensaje para indicar al usuario que debe elegir una opción.
+                Console.Write("Seleccione opción: ");
                 var k = Console.ReadKey(true);
                 if (k.Key == ConsoleKey.A) { if (AddHost(config)) config.Save(ConfigPath); }
                 else if (char.ToLower(k.KeyChar) == 'k') _selectedIdentity = PromptIdentityFile(null);
@@ -703,6 +705,8 @@ class Program
                 }, width, 4);
             BoxBottom(width);
 
+            // Mensaje para indicar al usuario que debe elegir una opción.
+            Console.Write("Seleccione opción: ");
             var k = pending ?? Console.ReadKey(true);
             pending = null;
             switch (k.Key)
