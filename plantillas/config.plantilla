@@ -1,0 +1,20 @@
+# Configuración SSH de ejemplo para SSH Manager.
+# Sustituye los valores de ejemplo por los de tus servidores.
+#
+# SSH Manager reconoce los comentarios "# Tags: ..." situados justo
+# antes de cada bloque Host y muestra solo el primer patrón de la
+# línea Host como alias del servidor.
+
+# Tags: ejemplo, produccion
+Host ejemplo
+    HostName ejemplo.com
+    User usuario
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519
+
+## Tags: desarrollo
+# Host otro-ejemplo
+#     HostName 192.0.2.10
+#     User admin
+#     Port 2222
+#     IdentityFile id_ed25519

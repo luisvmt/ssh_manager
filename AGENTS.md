@@ -31,6 +31,8 @@ dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFil
 dotnet publish -c Release -r win-x64   --self-contained true -p:PublishSingleFile=true
 ```
 
+Instalador completo (Windows + Linux, con plantillas y guía): `./crear_instalador_zip.sh`. Genera `instalador/` (ignorado por Git) con los binarios, `sshmanager-windows.zip`, `sshmanager-linux.tar.gz` e `instalar.md`; requiere `zip` y `tar`.
+
 Tras cualquier cambio de código: `dotnet build` y confirmar **0 advertencias**. No hay suite de tests; la verificación funcional de la TUI es manual.
 
 ## Gotchas de ejecución

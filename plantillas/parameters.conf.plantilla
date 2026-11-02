@@ -1,0 +1,62 @@
+# SSH Manager - parámetros
+# Indica el nombre en el PATH o la ruta completa al ejecutable.
+# Las claves ausentes usan el valor por defecto.
+
+ssh = ssh
+ssh-keygen = ssh-keygen
+ssh-copy-id = ssh-copy-id
+scp = scp
+
+# Archivo de configuración SSH que gestiona la aplicación.
+# Vacío = ~/.ssh/config, el valor por defecto de ssh (no se pasa -F).
+# Con una ruta (absoluta o relativa al directorio de ejecución) se
+# gestiona ese archivo y se pasa a ssh con -F.
+# Si tiene un valor se utiliza este archivo como lista de host a conectar
+config = ./config
+
+# Clave privada que se pasa a ssh con -i.
+# Vacío = la que use ssh por defecto (ssh-agent y ~/.ssh/id_*).
+# En la TUI, la tecla 'k' permite cambiarla durante la sesión.
+# Si se pone una ruta de archivo, se utilizara este archivo para la conexion a los servidores remotos
+identity =
+
+# Número máximo de servidores visibles en la pantalla principal.
+# Si hay más, la lista se desplaza con ↑/↓ (una fila por pulsación).
+max-servers = 15
+
+# Colores de la fila resaltada (nombres de ConsoleColor).
+# Posibles colores:
+# Nombre	Valor numérico
+# Black	    0
+# DarkBlue	1
+# DarkGreen	2
+# DarkCyan	3
+# DarkRed	4
+# DarkMagenta	5
+# DarkYellow	6
+# Gray	    7
+# DarkGray	8
+# Blue	    9
+# Green	    10
+# Cyan	    11
+# Red	    12
+# Magenta	13
+# Yellow	14
+# White     15
+highlight-foreground = Yellow
+highlight-background = Blue
+
+# Color de las filas no seleccionadas de la lista.
+list-foreground = Yellow
+# Fondo de las filas no seleccionadas (vacío = sin fondo).
+list-background =
+
+# Color de la línea de ayuda/teclas del selector de archivos.
+hint-foreground = Red
+# Fondo de la línea de ayuda (vacío = sin fondo).
+hint-background =
+
+# Color de los avisos del selector (p. ej. "Usa ESPACIO para seleccionar").
+notice-foreground = Red
+# Fondo de los avisos (vacío = sin fondo).
+notice-background =

@@ -30,11 +30,13 @@ Host ovhcloud
     HostName 100.124.37.86
     User luisvmt
 
-# Tags: produccion
-Host n1
-    User a
+# Tags: Pruebas
+Host apps01-proxmox
+    User luisvmt
     Port 22
 
+    HostName 192.168.100.115
+    IdentityFile id_ed25519
 Host n2
     HostName asf
     User ew

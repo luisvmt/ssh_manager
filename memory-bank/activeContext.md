@@ -4,6 +4,7 @@
 Finalizada la implementación de **Enviar archivo (`s`)** y **Recibir archivo (`r`)** con `scp`, incluyendo selectores de ruta local/remoto.
 
 ## Cambios recientes
+- **Instalador reproducible**: `crear_instalador_zip.sh` publica `win-x64` y `linux-x64` en `instalador/{windows,linux}`, copia las plantillas `plantillas/parameters.conf.plantilla` y `plantillas/config.plantilla` (renombradas a `parameters.conf` y `config`), genera `instalador/sshmanager-windows.zip`, `instalador/sshmanager-linux.tar.gz` e `instalador/instalar.md`. `instalador/` está en `.gitignore`.
 - **Editar host (`e`) permite cambiar el alias**: nuevo `PromptAlias` (sin espacios ni duplicados), `HostBlock.Rename` reescribe solo el primer patrón de la línea `Host` conservando espaciado y patrones adicionales, y `ConfirmEdit` muestra el alias nuevo con su valor anterior. `EditHost` recibe ahora el `SshConfig` para validar duplicados.
 - Colores configurables ampliados: `list-foreground`/`list-background` (filas no resaltadas), `hint-foreground`/`hint-background` (línea de ayuda del selector, mensaje `ESPACIO`) y `notice-foreground`/`notice-background` (avisos del selector, p. ej. "Usa ESPACIO para seleccionar"). `hint-foreground` y `notice-foreground` por defecto `Red`; `*-background` vacío = sin fondo. Nuevo helper `BoxLineColored` y método `Parameters.ParseColorOrNone`.
 - Nuevo `MenuAction.SendFile` / `MenuAction.ReceiveFile`, dispatch en `Main`, entradas de menú `s`/`r` y documentación en `--help`.
