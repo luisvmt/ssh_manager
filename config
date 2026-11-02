@@ -12,7 +12,7 @@ Host ansible-luisvmt
     HostName 192.168.100.63
     User luisvmt
 
-# Tags: production
+# Tags: Produccion
 Host pihole
     HostName 192.168.100.21
     User luisvmt
@@ -25,7 +25,7 @@ Host oraclelinux9-local
     HostName 192.168.100.123
     User luisvmt
 
-# Tags: production
+# Tags: PRODUCCION
 Host ovhcloud
     HostName 100.124.37.86
     User luisvmt
@@ -68,3 +68,8 @@ Host beastweb-databasemart
 Host ansible-luisvmt-Copy
     HostName 192.168.100.63
     User luisvmt
+
+Host Nuevo
+    HostName 5.5.5.5
+    User luisvmt
+    IdentityFile ./id_ed25519

@@ -28,7 +28,6 @@ class Program
         string? keygenPath = null;
         string? execHost = null;
         string? execCommand = null;
-        string? configArg = null;
         string? backupDir = null;
 
         for (int i = 0; i < args.Length; i++)
@@ -39,12 +38,6 @@ class Program
                 case "--help":
                     PrintHelp();
                     return 0;
-                case "--config":
-                    if (i + 1 < args.Length) configArg = args[++i];
-                    break;
-                case "--identity":
-                    if (i + 1 < args.Length) _selectedIdentity = args[++i];
-                    break;
                 case "--keygen":
                     keygenPath = (i + 1 < args.Length && !args[i + 1].StartsWith("-"))
                         ? args[++i] : "id_ed25519";
@@ -62,16 +55,38 @@ class Program
                         ? args[++i] : ".";
                     break;
                 default:
-                    if (!args[i].StartsWith("-")) configArg ??= args[i];
-                    break;
+                    // --config y --identity ya no se admiten: ahora se configuran
+                    // en "parameters.conf" (claves 'config' e 'identity').
+                    Console.Error.WriteLine($"Error: opción no válida: {args[i]}");
+                    if (args[i] == "--config")
+                        Console.Error.WriteLine("  El archivo de configuración se define con 'config' en parameters.conf.");
+                    else if (args[i] == "--identity")
+                        Console.Error.WriteLine("  La clave privada se define con 'identity' en parameters.conf.");
+                    else
+                        Console.Error.WriteLine("  Usa --help para ver las opciones disponibles.");
+                    return 1;
             }
         }
 
-        // El archivo "parameters.conf" define los programas externos (ssh, ssh-keygen...)
-        // y los colores de resaltado. Sin él no se continúa la ejecución.
+        // El archivo "parameters.conf" define los programas externos (ssh, ssh-keygen...),
+        // el archivo de configuración SSH, la clave privada y los colores de resaltado.
+        // Sin él no se continúa la ejecución.
         var parameters = LoadParameters();
         if (parameters == null) return 1;
         _parameters = parameters;
+
+        // Ruta del config SSH (clave 'config' de parameters.conf):
+        //   - vacío -> ~/.ssh/config, el valor por defecto de ssh (sin -F),
+        //   - con ruta -> ese archivo, que además se pasa a ssh con -F.
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        ConfigPath = string.IsNullOrWhiteSpace(_parameters.SshConfigFile)
+            ? Path.Combine(home, ".ssh", "config")
+            : Path.GetFullPath(_parameters.SshConfigFile);
+
+        // Clave privada (clave 'identity' de parameters.conf). Vacío = la que use ssh
+        // por defecto (ssh-agent y ~/.ssh/id_*). La tecla 'k' de la TUI puede cambiarla.
+        if (!string.IsNullOrWhiteSpace(_parameters.Identity))
+            _selectedIdentity = _parameters.Identity;
 
         // Modo CLI: --keygen y --exec son acciones de un solo uso.
         if (keygenPath != null) return GenerateKeyPair(keygenPath);
@@ -82,8 +97,6 @@ class Program
             Console.Error.WriteLine("Error: --exec requiere <user@host> y <comando>.");
             return 1;
         }
-
-        ConfigPath = ResolveConfigPath(configArg);
 
         var dir = Path.GetDirectoryName(ConfigPath);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
@@ -191,25 +204,20 @@ class Program
 
     // ---------- CLI ----------
 
-    // Prioridad del archivo de configuración:
-    //   1) el indicado por parámetro (--config o argumento posicional),
-    //   2) el archivo "config" del directorio actual,
-    //   3) ~/.ssh/config.
-    static string ResolveConfigPath(string? fromArg)
-    {
-        if (!string.IsNullOrWhiteSpace(fromArg)) return Path.GetFullPath(fromArg);
-
-        var localConfig = Path.Combine(Directory.GetCurrentDirectory(), "config");
-        if (File.Exists(localConfig)) return localConfig;
-
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".ssh", "config");
-    }
-
     // Etiqueta + valor con la columna de valores alineada en la cabecera.
     static string HeaderField(string label, string value) =>
         (label + ":").PadRight(14) + " " + value;
+
+    // Añade "-F <archivo>" a ssh cuando parameters.conf define un config propio y
+    // el archivo existe (ssh falla si -F apunta a un archivo inexistente).
+    static void AddSshConfigArg(ProcessStartInfo psi)
+    {
+        if (!string.IsNullOrWhiteSpace(_parameters.SshConfigFile) && File.Exists(ConfigPath))
+        {
+            psi.ArgumentList.Add("-F");
+            psi.ArgumentList.Add(ConfigPath);
+        }
+    }
 
     // Carga "parameters.conf" del directorio actual. Si no existe, avisa y ofrece
     // crear una plantilla (No por defecto). Devuelve null si no se puede continuar.
@@ -222,7 +230,8 @@ class Program
             Console.WriteLine();
             Console.WriteLine($"Aviso: no se encontró el archivo de parámetros: {path}");
             Console.WriteLine("Ese archivo define los programas externos que usa SSH Manager");
-            Console.WriteLine("(ssh, ssh-keygen y ssh-copy-id) y los colores de resaltado.");
+            Console.WriteLine("(ssh, ssh-keygen y ssh-copy-id), el archivo de configuración SSH,");
+            Console.WriteLine("la clave privada y los colores de resaltado.");
 
             if (!ConfirmCreateParameters())
             {
@@ -272,15 +281,16 @@ class Program
         Console.WriteLine("SSH Manager - TUI para gestionar conexiones SSH");
         Console.WriteLine();
         Console.WriteLine("Uso:");
-        Console.WriteLine("  ssh-manager [opciones] [archivo-config]");
+        Console.WriteLine("  ssh-manager [opciones]");
         Console.WriteLine();
         Console.WriteLine("Opciones:");
         Console.WriteLine("  -h, --help                  Muestra esta ayuda");
-        Console.WriteLine("  --config <ruta>             Archivo de configuración (por defecto: ./config o ~/.ssh/config)");
-        Console.WriteLine("  --identity <ruta>           Clave privada a usar (afecta a --exec y a la TUI)");
         Console.WriteLine("  --keygen [nombre]           Crea un par de claves ed25519 en el directorio actual");
         Console.WriteLine("  --exec <user@host> <cmd>    Ejecuta un comando en un servidor externo");
         Console.WriteLine("  --backup [directorio]       Crea un backup (.tar.gz) de claves y config; por defecto en '.'");
+        Console.WriteLine();
+        Console.WriteLine("  El archivo de configuración SSH y la clave privada NO se pasan por");
+        Console.WriteLine("  parámetro: se definen en 'parameters.conf' (claves 'config' e 'identity').");
         Console.WriteLine();
         Console.WriteLine("Modo TUI:");
         Console.WriteLine("  ↑/↓          Navegar (la lista se desplaza si hay más servidores)");
@@ -296,7 +306,8 @@ class Program
         Console.WriteLine();
         Console.WriteLine("Archivo de parámetros:");
         Console.WriteLine("  'parameters.conf' (en el directorio actual) define los programas");
-        Console.WriteLine("  externos, el máximo de servidores en pantalla y los colores de la lista.");
+        Console.WriteLine("  externos, el archivo de configuración SSH, la clave privada,");
+        Console.WriteLine("  el máximo de servidores en pantalla y los colores de la lista.");
         Console.WriteLine("  Si no existe, al arrancar se avisa y se ofrece crear una plantilla");
         Console.WriteLine("  (respuesta por defecto: no); sin ese archivo el programa no continúa.");
         Console.WriteLine();
@@ -304,9 +315,15 @@ class Program
         Console.WriteLine("    ssh                   = ssh");
         Console.WriteLine("    ssh-keygen            = ssh-keygen");
         Console.WriteLine("    ssh-copy-id           = ssh-copy-id");
+        Console.WriteLine("    config                =          (vacío = ~/.ssh/config, sin -F)");
+        Console.WriteLine("    identity              =          (vacío = claves por defecto de ssh)");
         Console.WriteLine("    max-servers           = 15       (servidores visibles en pantalla)");
         Console.WriteLine("    highlight-foreground  = Yellow   (texto de la fila resaltada)");
         Console.WriteLine("    highlight-background  = Blue     (fondo de la fila resaltada)");
+        Console.WriteLine();
+        Console.WriteLine("  Si 'config' tiene una ruta, el programa gestiona ese archivo y lo pasa");
+        Console.WriteLine("  a ssh con -F. Si 'config' o 'identity' están vacíos se usan los valores");
+        Console.WriteLine("  por defecto de ssh (sin -F y sin -i respectivamente).");
         Console.WriteLine();
         Console.WriteLine("  Colores válidos (ConsoleColor): Black, DarkBlue, DarkGreen, DarkCyan,");
         Console.WriteLine("    DarkRed, DarkMagenta, DarkYellow, Gray, DarkGray, Blue, Green, Cyan,");
@@ -385,6 +402,7 @@ class Program
         try
         {
             var psi = new ProcessStartInfo { FileName = _parameters.Ssh, UseShellExecute = false };
+            AddSshConfigArg(psi);
             if (identity != null) { psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(identity); }
             psi.ArgumentList.Add(host);
             psi.ArgumentList.Add(command);
@@ -642,8 +660,8 @@ class Program
 
                 int numWidth = hosts.Count.ToString().Length;
 
-                // Tabla: Servidor | IP/Dominio | Usuario | Tags | Puerto | ID.
-                var header = new[] { "Servidor", "IP/Dominio", "Usuario", "Tags", "Puerto", "ID" };
+                // Tabla: Servidor | IP/Dominio | Usuario | Tags | Puerto | IdentityFile.
+                var header = new[] { "Servidor", "IP/Dominio", "Usuario", "Tags", "Puerto", "IdentityFile" };
                 var rows = new List<string[]>(hosts.Count);
                 for (int i = 0; i < hosts.Count; i++)
                     rows.Add(HostCells(hosts[i], i + 1, numWidth));
@@ -807,6 +825,7 @@ class Program
         try
         {
             var psi = new ProcessStartInfo { FileName = _parameters.Ssh, UseShellExecute = false };
+            AddSshConfigArg(psi);
             if (identity != null) { psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(identity); }
             psi.ArgumentList.Add(host.Name);
             using var proc = Process.Start(psi);
@@ -835,6 +854,7 @@ class Program
         try
         {
             var psi = new ProcessStartInfo { FileName = _parameters.Ssh, UseShellExecute = false };
+            AddSshConfigArg(psi);
             if (identity != null) { psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(identity); }
             psi.ArgumentList.Add(host.Name);
             psi.ArgumentList.Add(cmd);
@@ -872,8 +892,11 @@ class Program
         {
             // ssh-copy-id es un script de shell: en Windows (o con Git Bash en el
             // PATH) no se puede ejecutar con UseShellExecute=false, así que se usa
-            // siempre el método alternativo.
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && CommandExists(_parameters.SshCopyId))
+            // siempre el método alternativo. Además no admite "-F", por lo que con
+            // un config propio en parameters.conf también se usa el fallback.
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                && string.IsNullOrWhiteSpace(_parameters.SshConfigFile)
+                && CommandExists(_parameters.SshCopyId))
             {
                 var psi = new ProcessStartInfo { FileName = _parameters.SshCopyId, UseShellExecute = false };
                 if (identity != null) { psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(identity); }
@@ -886,7 +909,7 @@ class Program
             {
                 // Fallback portable: envía la clave embebida en base64 y la añade al authorized_keys.
                 // Requiere un servidor remoto tipo Unix/macOS (usa base64 -d y chmod).
-                Console.WriteLine("Usando método alternativo (requiere servidor remoto Unix/macOS)...");
+                Console.WriteLine("Copiando clave a servidor remoto ...");
                 var pubContent = File.ReadAllText(pubKey).Trim();
                 var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(pubContent));
                 var remoteCmd =
@@ -895,11 +918,13 @@ class Program
                     "chmod 600 ~/.ssh/authorized_keys";
 
                 var psi = new ProcessStartInfo { FileName = _parameters.Ssh, UseShellExecute = false };
+                AddSshConfigArg(psi);
                 if (identity != null) { psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(identity); }
                 psi.ArgumentList.Add(host.Name);
                 psi.ArgumentList.Add(remoteCmd);
                 using var proc = Process.Start(psi);
                 proc?.WaitForExit();
+                Console.WriteLine("Clave copiada ...");
             }
         }
         catch (Exception ex) { Console.WriteLine($"Error: {ex.Message}"); }
@@ -1146,10 +1171,11 @@ class Program
         SummaryChange("IdentityFile", identity ?? host.GetOption("IdentityFile"),
                       host.GetOption("IdentityFile"), "(por defecto de ssh)");
         Console.WriteLine();
-        Console.Write($"¿Seguro que deseas guardar los cambios en '{host.Name}'? (S/n): ");
+        // Por seguridad el valor por defecto es "no": Enter cancela la edición.
+        Console.Write($"¿Seguro que deseas guardar los cambios en '{host.Name}'? (s/N): ");
         var k = Console.ReadKey(true);
         Console.WriteLine();
-        return k.Key == ConsoleKey.Enter || char.ToLower(k.KeyChar) == 's';
+        return char.ToLower(k.KeyChar) == 's';
     }
 
     static string? Prompt(string label, string? current)
@@ -1364,6 +1390,14 @@ class Parameters
     public string SshKeygen = "ssh-keygen";
     public string SshCopyId = "ssh-copy-id";
 
+    // Archivo de configuración SSH que gestiona la aplicación. Vacío = ~/.ssh/config,
+    // el valor por defecto de ssh (en ese caso no se pasa -F).
+    public string SshConfigFile = "";
+
+    // Clave privada que se pasa a ssh con -i. Vacío = la que use ssh por defecto
+    // (ssh-agent y ~/.ssh/id_*).
+    public string Identity = "";
+
     // Colores de la fila resaltada en la lista de servidores.
     public ConsoleColor HighlightForeground = ConsoleColor.Yellow;
     public ConsoleColor HighlightBackground = ConsoleColor.Blue;
@@ -1395,6 +1429,8 @@ class Parameters
                 case "ssh":                  p.Ssh = value; break;
                 case "ssh-keygen":           p.SshKeygen = value; break;
                 case "ssh-copy-id":          p.SshCopyId = value; break;
+                case "config":               p.SshConfigFile = value; break;
+                case "identity":             p.Identity = value; break;
                 case "highlight-foreground": p.HighlightForeground = ParseColor(value, p.HighlightForeground); break;
                 case "highlight-background": p.HighlightBackground = ParseColor(value, p.HighlightBackground); break;
                 case "max-servers":
@@ -1425,6 +1461,16 @@ class Parameters
         sb.Append("ssh = ssh\n");
         sb.Append("ssh-keygen = ssh-keygen\n");
         sb.Append("ssh-copy-id = ssh-copy-id\n");
+        sb.Append('\n');
+        sb.Append("# Archivo de configuración SSH que gestiona la aplicación.\n");
+        sb.Append("# Vacío = ~/.ssh/config, el valor por defecto de ssh (no se pasa -F).\n");
+        sb.Append("# Con una ruta (absoluta o relativa al directorio de ejecución) se\n");
+        sb.Append("# gestiona ese archivo y se pasa a ssh con -F.\n");
+        sb.Append("config =\n");
+        sb.Append('\n');
+        sb.Append("# Clave privada que se pasa a ssh con -i.\n");
+        sb.Append("# Vacío = la que use ssh por defecto (ssh-agent y ~/.ssh/id_*).\n");
+        sb.Append("identity =\n");
         sb.Append('\n');
         sb.Append("# Número máximo de servidores visibles en la pantalla principal.\n");
         sb.Append("# Si hay más, la lista se desplaza con ↑/↓.\n");
