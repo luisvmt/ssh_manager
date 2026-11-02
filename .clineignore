@@ -1,0 +1,27 @@
+# Archivos y carpetas que Cline no debe leer ni indexar (SSH Manager).
+# Misma idea que .gitignore, pero para el contexto del asistente.
+
+# Control de versiones
+.git/
+
+# Artefactos de compilación
+bin/
+obj/
+.vs/
+node_modules/
+
+# Material sensible (claves privadas y configuración SSH)
+config
+id_ed25519
+id_ed25519.pub
+
+# Copias de seguridad
+ssh-backup-*.tar.gz
+
+# Temporales y logs
+*.log
+*.tmp
+*.user
+*.suo
+.DS_Store
+Thumbs.db
