@@ -179,7 +179,7 @@ class Program
                     if (AddHost(config)) { config.Save(ConfigPath); _filter = ""; }
                     break;
                 case MenuAction.Edit:
-                    if (sel != null && EditHost(sel)) config.Save(ConfigPath);
+                    if (sel != null && EditHost(sel, config)) config.Save(ConfigPath);
                     break;
                 case MenuAction.Delete:
                     if (sel != null && ConfirmDelete(sel))
@@ -1752,25 +1752,27 @@ class Program
     }
 
     // Devuelve true solo si el usuario confirma; hasta entonces el host no se modifica.
-    static bool EditHost(HostBlock host)
+    static bool EditHost(HostBlock host, SshConfig config)
     {
         Console.Clear();
         Console.WriteLine($"=== Editar: {host.Name} ===");
         Console.WriteLine("Deja en blanco para mantener el valor actual.\n");
 
+        var newAlias    = PromptAlias(host.Name, config, host);
         var newHostName = Prompt("HostName", host.GetOption("HostName"));
         var newUser     = Prompt("User", host.GetOption("User"));
         var newPort     = PromptPort("Port", host.GetOption("Port"));
         var newTags     = Prompt("Tags", string.IsNullOrWhiteSpace(host.Tags) ? null : host.Tags);
         var newId       = Prompt("IdentityFile", host.GetOption("IdentityFile"));
 
-        if (!ConfirmEdit(host, newHostName, newUser, newPort, newTags, newId))
+        if (!ConfirmEdit(host, newAlias, newHostName, newUser, newPort, newTags, newId))
         {
             Console.WriteLine("\nEdición cancelada. Presiona una tecla...");
             Console.ReadKey(true);
             return false;
         }
 
+        if (newAlias != null)    host.Rename(newAlias);
         if (newHostName != null) host.SetOption("HostName", newHostName);
         if (newUser != null)     host.SetOption("User", newUser);
         if (newPort != null)     host.SetOption("Port", newPort);
@@ -1781,14 +1783,14 @@ class Program
         return true;
     }
 
-    static bool ConfirmEdit(HostBlock host, string? hostName, string? user, string? port,
+    static bool ConfirmEdit(HostBlock host, string? alias, string? hostName, string? user, string? port,
                             string? tags, string? identity)
     {
         var oldPort = host.GetOption("Port") ?? "22 (por defecto)";
         Console.Clear();
         Console.WriteLine($"=== Resumen de los cambios: {host.Name} ===");
         Console.WriteLine();
-        SummaryField("Alias", host.Name);
+        SummaryChange("Alias", alias ?? host.Name, host.Name);
         SummaryChange("HostName", hostName ?? host.GetOption("HostName"), host.GetOption("HostName"));
         SummaryChange("User", user ?? host.GetOption("User"), host.GetOption("User"));
         SummaryChange("Port", port ?? oldPort, oldPort);
@@ -1808,6 +1810,28 @@ class Program
         Console.Write($"{label} [{current ?? ""}]: ");
         var s = (Console.ReadLine() ?? "").Trim();
         return string.IsNullOrEmpty(s) ? null : s;
+    }
+
+    // Alias: vacío mantiene el actual; no admite espacios ni duplicados.
+    static string? PromptAlias(string current, SshConfig config, HostBlock self)
+    {
+        while (true)
+        {
+            var alias = Prompt("Alias", current);
+            if (alias == null) return null;
+            if (alias.Any(char.IsWhiteSpace))
+            {
+                Console.WriteLine("  Alias inválido: no puede contener espacios.");
+                continue;
+            }
+            if (config.Hosts.Any(h => !ReferenceEquals(h, self)
+                                      && h.Name.Equals(alias, StringComparison.OrdinalIgnoreCase)))
+            {
+                Console.WriteLine($"  Ya existe un host con el alias '{alias}'.");
+                continue;
+            }
+            return alias;
+        }
     }
 
     // Puerto: entero mayor que cero o vacío (omitir / mantener el actual).
@@ -1852,6 +1876,30 @@ class HostBlock
     public List<ConfigLine> Body = new();
 
     public void AddBodyLine(string line) => Body.Add(ConfigLine.Parse(line));
+
+    // Cambia el alias y reescribe solo el primer patrón de la línea Host,
+    // conservando el espaciado y los patrones adicionales.
+    public void Rename(string newName)
+    {
+        Name = newName;
+        var trimmed = RawHostLine.TrimStart();
+        var leading = RawHostLine[..(RawHostLine.Length - trimmed.Length)];
+
+        if (trimmed.Length < 4
+            || !trimmed.StartsWith("Host", StringComparison.OrdinalIgnoreCase)
+            || (trimmed.Length > 4 && !char.IsWhiteSpace(trimmed[4])))
+        {
+            RawHostLine = leading + "Host " + newName;
+            return;
+        }
+
+        int start = 4;
+        while (start < trimmed.Length && char.IsWhiteSpace(trimmed[start])) start++;
+        int end = start;
+        while (end < trimmed.Length && !char.IsWhiteSpace(trimmed[end])) end++;
+
+        RawHostLine = leading + trimmed[..start] + newName + trimmed[end..];
+    }
 
     public string? GetOption(string key)
         => Body.FirstOrDefault(l => l.Key != null && l.Key.Equals(key, StringComparison.OrdinalIgnoreCase))?.Value;

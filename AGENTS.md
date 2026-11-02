@@ -10,7 +10,7 @@ TUI de consola en **C# / .NET 10** (`net10.0`) para gestionar conexiones SSH. Si
 
 ## Control de versiones
 
-- Antes de empezar cualquier tarea que modifique archivos, ejecuta `git status --porcelain`. Si hay cambios sin commitear, créalos como commit de seguridad: `git add -A && git commit -m "checkpoint: antes de <tarea>"`.
+- Antes de empezar cualquier tarea que modifique archivos, ejecuta `git status --porcelain`. Si hay cambios sin commitear, créalos como commit de seguridad: `git add -A && git commit -m "checkpoint: antes de <tarea>"`. El mensaje del commit debe incluir la fecha y hora del commit.
 - Antes de ejecutar `dotnet build` no hace falta otro commit; el checkpoint inicial cubre la tarea.
 
 ## Comandos
