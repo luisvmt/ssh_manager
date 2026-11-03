@@ -2,6 +2,9 @@
 # Para linux
 
 1. Crear una carpeta donde descomprimir el instalador
+mkdir sshmanager
+cd sshmanager
+
 2. Descomprimir el instalador
 tar -xvzf sshmanager-linux.tar.gz
 
@@ -27,4 +30,17 @@ Si creaste las claves publicas/privadas del punto anterior, configurar estas cla
 7. Inscribir el directorio del aplicativo en el PATH del sistema operativo
 
 8. Ejecutar el aplicativo
-sshmanager
+./sshmanager
+
+# Opcionalmente
+Puedes crear scripts en bash para iniciar el aplicativo con varios archivos parametros
+
+    script 01
+    ---------
+    #!/usr/bin/bash
+    <ruta>/sshmanager --parameters <ruta>/parameters01.conf
+
+    script 02
+    ---------
+    #!/usr/bin/bash
+    <ruta>/sshmanager --parameters <ruta>/parameters02.conf

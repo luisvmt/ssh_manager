@@ -55,7 +55,6 @@ class Program
                     backupDir = (i + 1 < args.Length && !args[i + 1].StartsWith("-"))
                         ? args[++i] : ".";
                     break;
-                case "-p":
                 case "--parameters":
                     if (i + 1 < args.Length && !args[i + 1].StartsWith("-"))
                         parametersPath = args[++i];
@@ -239,7 +238,7 @@ class Program
         }
     }
 
-    // Carga "parameters.conf": el indicado con -p/--parameters o, por defecto,
+    // Carga "parameters.conf": el indicado con --parameters o, por defecto,
     // el situado junto al ejecutable. Si no existe, avisa y ofrece crear una
     // plantilla (No por defecto). parametersDir es la carpeta del archivo usado.
     // Devuelve null si no se puede continuar.
@@ -327,7 +326,7 @@ class Program
         Console.WriteLine("  --keygen [nombre]           Crea un par de claves ed25519 en el directorio actual");
         Console.WriteLine("  --exec <user@host> <cmd>    Ejecuta un comando en un servidor externo");
         Console.WriteLine("  --backup [directorio]       Crea un backup (.tar.gz) de claves y config; por defecto en '.'");
-        Console.WriteLine("  -p, --parameters <ruta>     Archivo de parámetros a usar (por defecto: junto al ejecutable)");
+        Console.WriteLine("  --parameters <ruta>         Archivo de parámetros a usar (por defecto: junto al ejecutable)");
         Console.WriteLine();
         Console.WriteLine("  El archivo de configuración SSH y la clave privada NO se pasan por");
         Console.WriteLine("  parámetro: se definen en 'parameters.conf' (claves 'config' e 'identity').");
@@ -348,7 +347,7 @@ class Program
         Console.WriteLine();
         Console.WriteLine("Archivo de parámetros:");
         Console.WriteLine("  'parameters.conf' se busca junto al ejecutable; también puede");
-        Console.WriteLine("  indicarse otra ruta con -p/--parameters. Define los programas");
+        Console.WriteLine("  indicarse otra ruta con --parameters. Define los programas");
         Console.WriteLine("  externos, el archivo de configuración SSH, la clave privada,");
         Console.WriteLine("  el máximo de servidores en pantalla y los colores de la lista.");
         Console.WriteLine("  Si no existe, al arrancar se avisa y se ofrece crear una plantilla");

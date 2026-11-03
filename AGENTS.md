@@ -40,7 +40,7 @@ Tras cualquier cambio de código: `dotnet build` y confirmar **0 advertencias**.
 ## Gotchas de ejecución
 
 - **La TUI exige stdin interactivo** (`Console.ReadKey`). Con stdin redirigido (shell de agente, CI) aborta con error. Para validar sin TUI usa `--help`, `--keygen`, `--exec` o `--backup`. En VS Code hay que usar `"console": "integratedTerminal"` (ver `.vscode/launch.json`).
-- `parameters.conf` se busca **junto al ejecutable** (`AppContext.BaseDirectory`). `-p`/`--parameters <ruta>` permite usar otro archivo explícitamente.
+- `parameters.conf` se busca **junto al ejecutable** (`AppContext.BaseDirectory`). `--parameters <ruta>` permite usar otro archivo explícitamente.
 - Las rutas relativas de `config` e `identity` se resuelven respecto a la carpeta del `parameters.conf` usado, no al CWD.
 - Si falta `parameters.conf`, el programa ofrece crear una plantilla en la carpeta del ejecutable; sin terminal interactiva responde "no" y termina con código 1. Si la ruta pasada con `--parameters` no existe, termina con error sin preguntar.
 - `--config` y `--identity` ya no existen como flags: se configuran en `parameters.conf`.
@@ -50,7 +50,7 @@ Tras cualquier cambio de código: `dotnet build` y confirmar **0 advertencias**.
 
 - Formato `clave = valor`; claves ausentes o inválidas conservan el valor por defecto.
 - Claves: `ssh`, `ssh-keygen`, `ssh-copy-id`, `scp`, `config`, `identity`, `max-servers` y los pares de color `highlight-*`, `list-*`, `hint-*`, `notice-*`.
-- El archivo se elige con `-p`/`--parameters`; sin esa opción se usa el que está junto al ejecutable.
+- El archivo se elige con `--parameters`; sin esa opción se usa el que está junto al ejecutable.
 - Añadir una clave exige tocar **cinco sitios**: campo en `Parameters`, rama en `Parameters.Load`, `Parameters.WriteTemplate`, `parameters.conf` y `PrintHelp` (además del memory-bank).
 
 ## Arquitectura y convenciones
