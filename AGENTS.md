@@ -17,12 +17,14 @@ TUI de consola en **C# / .NET 10** (`net10.0`) para gestionar conexiones SSH. Si
 
 ```bash
 dotnet build                 # debe dar 0 errores y 0 advertencias
-dotnet run                   # TUI interactiva (desde la raíz del repo)
-dotnet run -- --help         # verificación no interactiva
-dotnet run -- --keygen [nombre]
-dotnet run -- --exec <user@host> <comando>
-dotnet run -- --backup [directorio]
+dotnet run -- --parameters ./parameters.conf          # TUI interactiva desde el repo
+dotnet run -- --parameters ./parameters.conf --help   # verificación no interactiva
+dotnet run -- --parameters ./parameters.conf --keygen [nombre]
+dotnet run -- --parameters ./parameters.conf --exec <user@host> <comando>
+dotnet run -- --parameters ./parameters.conf --backup [directorio]
 ```
+
+`dotnet run` sin `--parameters` busca `parameters.conf` en `bin/Debug/net10.0/`, no en la raíz del repo.
 
 Publicación self-contained (ver `compilar.txt`):
 
@@ -31,15 +33,16 @@ dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFil
 dotnet publish -c Release -r win-x64   --self-contained true -p:PublishSingleFile=true
 ```
 
-Instalador completo (Windows + Linux, con plantillas y guía): `./crear_instalador_zip.sh`. Genera `instalador/` (ignorado por Git) con los binarios, `sshmanager-windows.zip`, `sshmanager-linux.tar.gz` e `instalar.md`; requiere `zip` y `tar`.
+Instalador completo (Windows + Linux, con plantillas y `guia-rapida.md`): `./crear_instaladores.sh`. Genera `instalador/` (ignorado por Git) con los binarios, `sshmanager-windows.zip` y `sshmanager-linux.tar.gz`; requiere `zip` y `tar`.
 
 Tras cualquier cambio de código: `dotnet build` y confirmar **0 advertencias**. No hay suite de tests; la verificación funcional de la TUI es manual.
 
 ## Gotchas de ejecución
 
 - **La TUI exige stdin interactivo** (`Console.ReadKey`). Con stdin redirigido (shell de agente, CI) aborta con error. Para validar sin TUI usa `--help`, `--keygen`, `--exec` o `--backup`. En VS Code hay que usar `"console": "integratedTerminal"` (ver `.vscode/launch.json`).
-- `parameters.conf` se busca **en el directorio de trabajo actual** (`Parameters.DefaultPath`), no junto al ejecutable. Ejecuta siempre desde la raíz del repo. Las rutas de `config` e `identity` también son relativas al CWD.
-- Si falta `parameters.conf`, el programa ofrece crear una plantilla; sin terminal interactiva responde "no" y termina con código 1.
+- `parameters.conf` se busca **junto al ejecutable** (`AppContext.BaseDirectory`). `-p`/`--parameters <ruta>` permite usar otro archivo explícitamente.
+- Las rutas relativas de `config` e `identity` se resuelven respecto a la carpeta del `parameters.conf` usado, no al CWD.
+- Si falta `parameters.conf`, el programa ofrece crear una plantilla en la carpeta del ejecutable; sin terminal interactiva responde "no" y termina con código 1. Si la ruta pasada con `--parameters` no existe, termina con error sin preguntar.
 - `--config` y `--identity` ya no existen como flags: se configuran en `parameters.conf`.
 - Los valores con lado derecho vacío se ignoran en `Parameters.Load` (así los fondos `*-background =` significan "sin fondo").
 
@@ -47,6 +50,7 @@ Tras cualquier cambio de código: `dotnet build` y confirmar **0 advertencias**.
 
 - Formato `clave = valor`; claves ausentes o inválidas conservan el valor por defecto.
 - Claves: `ssh`, `ssh-keygen`, `ssh-copy-id`, `scp`, `config`, `identity`, `max-servers` y los pares de color `highlight-*`, `list-*`, `hint-*`, `notice-*`.
+- El archivo se elige con `-p`/`--parameters`; sin esa opción se usa el que está junto al ejecutable.
 - Añadir una clave exige tocar **cinco sitios**: campo en `Parameters`, rama en `Parameters.Load`, `Parameters.WriteTemplate`, `parameters.conf` y `PrintHelp` (además del memory-bank).
 
 ## Arquitectura y convenciones

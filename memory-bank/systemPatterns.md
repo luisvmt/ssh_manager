@@ -2,7 +2,7 @@
 
 ## Arquitectura
 - Un único `Program.cs` con la clase estática `Program` (namespace `SshManager`) y las clases de apoyo al final del archivo.
-- `Main` parsea argumentos (`--help`, `--keygen`, `--exec`, `--backup`) y, sin argumentos, entra en el bucle de la TUI.
+- `Main` parsea argumentos (`--help`, `--keygen`, `--exec`, `--backup`, `-p`/`--parameters`) y, sin argumentos, entra en el bucle de la TUI.
 
 ## Patrón de acciones (TUI)
 - `enum MenuAction { Connect, ExecCommand, CopyKey, SendFile, ReceiveFile, SelectKey, GenerateKey, Add, Edit, Delete, Filter, Backup, Quit }`.
@@ -15,6 +15,7 @@
 
 ## Configuración (`parameters.conf`)
 - `clave = valor`; claves ausentes usan valor por defecto. La carga está en `Parameters.Load`.
+- Sin `-p`/`--parameters`, el archivo se busca junto al ejecutable (`AppContext.BaseDirectory`). Las rutas relativas de `config` e `identity` se resuelven respecto a la carpeta del `parameters.conf` cargado.
 - Añadir una clave requiere tocar `Parameters`, `Load`, la plantilla y el propio archivo.
 
 ## Ejecución de procesos externos

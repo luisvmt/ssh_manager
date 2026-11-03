@@ -29,6 +29,7 @@ class Program
         string? execHost = null;
         string? execCommand = null;
         string? backupDir = null;
+        string? parametersPath = null;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -54,6 +55,16 @@ class Program
                     backupDir = (i + 1 < args.Length && !args[i + 1].StartsWith("-"))
                         ? args[++i] : ".";
                     break;
+                case "-p":
+                case "--parameters":
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("-"))
+                        parametersPath = args[++i];
+                    else
+                    {
+                        Console.Error.WriteLine($"Error: {args[i]} requiere una ruta de archivo.");
+                        return 1;
+                    }
+                    break;
                 default:
                     // --config y --identity ya no se admiten: ahora se configuran
                     // en "parameters.conf" (claves 'config' e 'identity').
@@ -71,22 +82,23 @@ class Program
         // El archivo "parameters.conf" define los programas externos (ssh, ssh-keygen...),
         // el archivo de configuración SSH, la clave privada y los colores de resaltado.
         // Sin él no se continúa la ejecución.
-        var parameters = LoadParameters();
+        var parameters = LoadParameters(parametersPath, out var parametersDir);
         if (parameters == null) return 1;
         _parameters = parameters;
 
         // Ruta del config SSH (clave 'config' de parameters.conf):
         //   - vacío -> ~/.ssh/config, el valor por defecto de ssh (sin -F),
         //   - con ruta -> ese archivo, que además se pasa a ssh con -F.
+        // Las rutas relativas se resuelven respecto a la carpeta de parameters.conf.
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         ConfigPath = string.IsNullOrWhiteSpace(_parameters.SshConfigFile)
             ? Path.Combine(home, ".ssh", "config")
-            : Path.GetFullPath(_parameters.SshConfigFile);
+            : Path.GetFullPath(_parameters.SshConfigFile, parametersDir);
 
         // Clave privada (clave 'identity' de parameters.conf). Vacío = la que use ssh
         // por defecto (ssh-agent y ~/.ssh/id_*). La tecla 'k' de la TUI puede cambiarla.
         if (!string.IsNullOrWhiteSpace(_parameters.Identity))
-            _selectedIdentity = _parameters.Identity;
+            _selectedIdentity = Path.GetFullPath(_parameters.Identity, parametersDir);
 
         // Modo CLI: --keygen y --exec son acciones de un solo uso.
         if (keygenPath != null) return GenerateKeyPair(keygenPath);
@@ -227,40 +239,59 @@ class Program
         }
     }
 
-    // Carga "parameters.conf" del directorio actual. Si no existe, avisa y ofrece
-    // crear una plantilla (No por defecto). Devuelve null si no se puede continuar.
-    static Parameters? LoadParameters()
+    // Carga "parameters.conf": el indicado con -p/--parameters o, por defecto,
+    // el situado junto al ejecutable. Si no existe, avisa y ofrece crear una
+    // plantilla (No por defecto). parametersDir es la carpeta del archivo usado.
+    // Devuelve null si no se puede continuar.
+    static Parameters? LoadParameters(string? explicitPath, out string parametersDir)
     {
-        var path = Parameters.DefaultPath;
+        parametersDir = "";
+        string path;
 
-        if (!File.Exists(path))
+        if (!string.IsNullOrWhiteSpace(explicitPath))
         {
-            Console.WriteLine();
-            Console.WriteLine($"Aviso: no se encontró el archivo de parámetros: {path}");
-            Console.WriteLine("Ese archivo define los programas externos que usa SSH Manager");
-            Console.WriteLine("(ssh, ssh-keygen y ssh-copy-id), el archivo de configuración SSH,");
-            Console.WriteLine("la clave privada y los colores de resaltado.");
-
-            if (!ConfirmCreateParameters())
+            path = Path.GetFullPath(explicitPath);
+            if (!File.Exists(path))
             {
-                Console.Error.WriteLine();
-                Console.Error.WriteLine("Error: sin el archivo 'parameters.conf' no se puede continuar.");
-                return null;
-            }
-
-            try
-            {
-                Parameters.WriteTemplate(path);
-                Console.WriteLine($"✓ Archivo creado: {path}");
-                Console.WriteLine("  Edítalo si necesitas usar otra ruta o nombre de ejecutable.");
-                Console.WriteLine();
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"Error al crear '{path}': {ex.Message}");
+                Console.Error.WriteLine($"Error: no se encontró el archivo de parámetros: {path}");
                 return null;
             }
         }
+        else
+        {
+            path = Parameters.DefaultPath;
+
+            if (!File.Exists(path))
+            {
+                Console.WriteLine();
+                Console.WriteLine($"Aviso: no se encontró el archivo de parámetros: {path}");
+                Console.WriteLine("Ese archivo define los programas externos que usa SSH Manager");
+                Console.WriteLine("(ssh, ssh-keygen y ssh-copy-id), el archivo de configuración SSH,");
+                Console.WriteLine("la clave privada y los colores de resaltado.");
+
+                if (!ConfirmCreateParameters())
+                {
+                    Console.Error.WriteLine();
+                    Console.Error.WriteLine("Error: sin el archivo 'parameters.conf' no se puede continuar.");
+                    return null;
+                }
+
+                try
+                {
+                    Parameters.WriteTemplate(path);
+                    Console.WriteLine($"✓ Archivo creado: {path}");
+                    Console.WriteLine("  Edítalo si necesitas usar otra ruta o nombre de ejecutable.");
+                    Console.WriteLine();
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error al crear '{path}': {ex.Message}");
+                    return null;
+                }
+            }
+        }
+
+        parametersDir = Path.GetDirectoryName(path) ?? AppContext.BaseDirectory;
 
         try
         {
@@ -296,6 +327,7 @@ class Program
         Console.WriteLine("  --keygen [nombre]           Crea un par de claves ed25519 en el directorio actual");
         Console.WriteLine("  --exec <user@host> <cmd>    Ejecuta un comando en un servidor externo");
         Console.WriteLine("  --backup [directorio]       Crea un backup (.tar.gz) de claves y config; por defecto en '.'");
+        Console.WriteLine("  -p, --parameters <ruta>     Archivo de parámetros a usar (por defecto: junto al ejecutable)");
         Console.WriteLine();
         Console.WriteLine("  El archivo de configuración SSH y la clave privada NO se pasan por");
         Console.WriteLine("  parámetro: se definen en 'parameters.conf' (claves 'config' e 'identity').");
@@ -315,7 +347,8 @@ class Program
         Console.WriteLine("  q            Salir");
         Console.WriteLine();
         Console.WriteLine("Archivo de parámetros:");
-        Console.WriteLine("  'parameters.conf' (en el directorio actual) define los programas");
+        Console.WriteLine("  'parameters.conf' se busca junto al ejecutable; también puede");
+        Console.WriteLine("  indicarse otra ruta con -p/--parameters. Define los programas");
         Console.WriteLine("  externos, el archivo de configuración SSH, la clave privada,");
         Console.WriteLine("  el máximo de servidores en pantalla y los colores de la lista.");
         Console.WriteLine("  Si no existe, al arrancar se avisa y se ofrece crear una plantilla");
@@ -341,6 +374,8 @@ class Program
         Console.WriteLine("  Si 'config' tiene una ruta, el programa gestiona ese archivo y lo pasa");
         Console.WriteLine("  a ssh con -F. Si 'config' o 'identity' están vacíos se usan los valores");
         Console.WriteLine("  por defecto de ssh (sin -F y sin -i respectivamente).");
+        Console.WriteLine("  Las rutas relativas de 'config' e 'identity' se resuelven respecto a");
+        Console.WriteLine("  la carpeta donde está el archivo de parámetros.");
         Console.WriteLine();
         Console.WriteLine("  Colores válidos (ConsoleColor): Black, DarkBlue, DarkGreen, DarkCyan,");
         Console.WriteLine("    DarkRed, DarkMagenta, DarkYellow, Gray, DarkGray, Blue, Green, Cyan,");
@@ -2091,8 +2126,9 @@ class Parameters
     // Número máximo de servidores visibles a la vez en la pantalla principal.
     public int MaxServers = 15;
 
+    // Archivo de parámetros por defecto: junto al ejecutable.
     public static string DefaultPath =>
-        Path.Combine(Directory.GetCurrentDirectory(), FileName);
+        Path.Combine(AppContext.BaseDirectory, FileName);
 
     // Las claves ausentes conservan el valor por defecto.
     public static Parameters Load(string path)

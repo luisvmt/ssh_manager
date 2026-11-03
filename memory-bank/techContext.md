@@ -22,5 +22,5 @@
 - Ninguna externa de NuGet; solo el SDK de .NET y las herramientas OpenSSH.
 
 ## Convenciones de tooling
-- `parameters.conf` define rutas y valores; `config` y `identity` se pasan a `ssh`/`scp` con `-F` e `-i`.
+- `parameters.conf` define rutas y valores; `config` y `identity` se pasan a `ssh`/`scp` con `-F` e `-i`. Se busca junto al ejecutable salvo que se indique con `-p`/`--parameters`; sus rutas relativas se resuelven respecto a su propia carpeta.
 - Backups se nombran `ssh-backup-<AAAAmmdd-HHMMSS>.tar.gz`.
