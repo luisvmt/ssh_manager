@@ -9,11 +9,23 @@ node_modules/
 *.suo
 .DS_Store
 Thumbs.db
+
+# claves publicas y privadas
+*/id_ed25519*
 id_ed25519
 id_ed25519.pub
+
+# comprimidos
 *.tar.gz
 *.zip
 *.tar
+
+# archivos y carpetas sensibles
 .env
+.clineignore
+.clinerules
+AGENTS.md
+opencode.json
 config
 instalador/
+memory-bank/
