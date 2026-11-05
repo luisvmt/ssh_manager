@@ -11,5 +11,8 @@ node_modules/
 Thumbs.db
 id_ed25519*
 *.tar.gz
+*.zip
+*.tar
+.env
 config
 instalador/
