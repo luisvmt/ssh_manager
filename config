@@ -1,0 +1,77 @@
+# SSH configuration file
+
+Host prox-bdmysql
+    HostName 192.168.100.59
+    User luisvmt
+
+Host prox-apps01
+    HostName 192.168.100.115
+    User luisvmt
+
+Host ansible-luisvmt
+    HostName 192.168.100.63
+    User luisvmt
+
+# Tags: Produccion
+Host pihole
+    HostName 192.168.100.21
+    User luisvmt
+
+Host ansible-semaphore
+    HostName 192.168.100.63
+    User semaphore
+
+Host oraclelinux9-local
+    HostName 192.168.100.123
+    User luisvmt
+
+# Tags: PRODUCCION
+Host ovhcloud
+    HostName 100.124.37.86
+    User luisvmt
+
+# Tags: Pruebas
+Host apps01-proxmox
+    User luisvmt
+    Port 22
+
+    HostName 192.168.100.186
+    IdentityFile id_ed25519
+Host n2
+    HostName asf
+    User ew
+    Port 22
+    IdentityFile d
+
+Host n3
+    HostName asf
+    User asf
+    Port 22
+    IdentityFile asdf
+
+Host n4
+    HostName asdf
+    User asdf
+    Port 22
+    IdentityFile d
+
+# Tags: desarrollo.pruebas.dev.calidad
+Host n5
+    User asf
+    Port 22
+    IdentityFile s
+# SSH configuration file
+
+Host beastweb-databasemart
+    HostName 93.127.134.225
+    User administrator
+    Port 10055
+
+Host ansible-luisvmt-Copy
+    HostName 192.168.100.63
+    User luisvmt
+
+Host Nuevo
+    HostName 5.5.5.5
+    User luisvmt
+    IdentityFile ./id_ed25519
