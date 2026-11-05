@@ -6,8 +6,22 @@
 # línea Host como alias del servidor.
 
 # Tags: ejemplo, produccion
-Host ejemplo
+Host ejemplo01
     HostName ejemplo.com
+    User usuario
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519
+
+# Tags: produccion
+Host ejemplo02
+    HostName 192.168.0.12
+    User admin
+    Port 2222
+    IdentityFile ~/.ssh/id_ed25519
+
+# Tags: desarrollo
+Host ejemplo03
+    HostName miservidor
     User usuario
     Port 22
     IdentityFile ~/.ssh/id_ed25519

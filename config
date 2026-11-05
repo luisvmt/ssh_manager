@@ -35,7 +35,7 @@ Host apps01-proxmox
     User luisvmt
     Port 22
 
-    HostName 192.168.100.115
+    HostName 192.168.100.186
     IdentityFile id_ed25519
 Host n2
     HostName asf

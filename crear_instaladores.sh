@@ -4,8 +4,11 @@
 # Salida:
 #   instalador/windows/                 binario win-x64 + parameters.conf + config + guia-rapida.md
 #   instalador/linux/                   binario linux-x64 + parameters.conf + config + guia-rapida.md
-#   instalador/sshmanager-windows.zip   contenido de instalador/windows/
-#   instalador/sshmanager-linux.tar.gz  contenido de instalador/linux/
+#   instalador/sshmanager-windows.zip   instalador/windows/ dentro de sshmanager/
+#   instalador/sshmanager-linux.tar.gz  instalador/linux/ dentro de sshmanager/
+#
+# Los paquetes incluyen un directorio raíz "sshmanager/" para que al
+# descomprimirlos no se mezclen con el contenido del directorio actual.
 #
 # Uso: ./crear_instaladores.sh
 
@@ -70,8 +73,16 @@ done
 chmod 600 "$INSTALL_DIR/linux/config" "$INSTALL_DIR/linux/parameters.conf"
 
 echo "==> Creando archivos comprimidos..."
-(cd "$INSTALL_DIR/windows" && zip -q -r "$INSTALL_DIR/sshmanager-windows.zip" .)
-tar -czf "$INSTALL_DIR/sshmanager-linux.tar.gz" -C "$INSTALL_DIR/linux" .
+# Se prepara un directorio raíz "sshmanager/" en un área temporal para que
+# ambos paquetes se descompriman en una carpeta nueva, no en el directorio actual.
+STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sshmanager-instalador.XXXXXX")"
+trap 'rm -rf "$STAGE_DIR"' EXIT
+mkdir -p "$STAGE_DIR/windows/sshmanager" "$STAGE_DIR/linux/sshmanager"
+cp -a "$INSTALL_DIR/windows/." "$STAGE_DIR/windows/sshmanager/"
+cp -a "$INSTALL_DIR/linux/." "$STAGE_DIR/linux/sshmanager/"
+
+(cd "$STAGE_DIR/windows" && zip -q -r "$INSTALL_DIR/sshmanager-windows.zip" sshmanager)
+tar -czf "$INSTALL_DIR/sshmanager-linux.tar.gz" -C "$STAGE_DIR/linux" sshmanager
 
 echo
 echo "Instalador generado en: $INSTALL_DIR"

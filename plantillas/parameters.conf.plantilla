@@ -18,6 +18,8 @@ config = ./config
 # Vacío = la que use ssh por defecto (ssh-agent y ~/.ssh/id_*).
 # En la TUI, la tecla 'k' permite cambiarla durante la sesión.
 # Si se pone una ruta de archivo, se utilizara este archivo para la conexion a los servidores remotos
+
+#identity = ./id_ed25519
 identity =
 
 # Número máximo de servidores visibles en la pantalla principal.
