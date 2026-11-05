@@ -20,14 +20,16 @@ id_ed25519.pub
 *.zip
 *.tar
 
-# archivos y carpetas sensibles
+# archivos y carpetas sensibles de modelos
 .env
 .clineignore
 .clinerules
 AGENTS.md
 opencode.json
-config
-instalador/
 memory-bank/
+
+# archivos y carpetas sensibles de la aplicacion
 implementation_plan.md
 modelos_prompt.md
+config
+instalador/
