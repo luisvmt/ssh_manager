@@ -59,6 +59,8 @@ build/
 *.class
 
 # Secretos y entorno
+.secrets*
+/secrets/
 .env*
 !.env.example
 *.pem
