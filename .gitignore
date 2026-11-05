@@ -1,8 +1,7 @@
-# Archivos ignorados por Git (generado por admin_git.sh)
+# Archivos ignorados por Git
 bin/
 obj/
 .vs/
-node_modules/
 *.log
 *.tmp
 *.user
@@ -10,10 +9,48 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# claves publicas y privadas
-*/id_ed25519*
+# Dependencias
+node_modules/
+venv/
+__pycache__/
+target/
+
+# Build
+dist/
+build/
+*.o
+*.class
+
+# Secretos y entorno
+.env
+.env*
+.env.local
+.env.local*
+*.pem
+*.key
+id_ed25519*
 id_ed25519
 id_ed25519.pub
+id_rsa*
+id_rsa.pub
+id_rsa
+credentials.json
+
+# Logs
+*.log
+logs/
+
+# configuracion de herramientas de desarrollo
+.vscode/settings.json
+.vscode/
+.idea/
+*.swp
+*~
+
+# Sistema operativo (afecta a todos)
+.DS_Store
+Thumbs.db
+desktop.ini
 
 # comprimidos
 *.tar.gz
@@ -21,7 +58,6 @@ id_ed25519.pub
 *.tar
 
 # archivos y carpetas sensibles de modelos
-.env
 .clineignore
 .clinerules
 AGENTS.md
@@ -29,6 +65,7 @@ opencode.json
 memory-bank/
 
 # archivos y carpetas sensibles de la aplicacion
+scripts/
 implementation_plan.md
 modelos_prompt.md
 config
